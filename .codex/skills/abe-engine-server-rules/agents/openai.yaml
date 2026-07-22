@@ -1,0 +1,4 @@
+interface:
+  display_name: "ABE Engine Server Rules"
+  short_description: "C-first server framework rules"
+  default_prompt: "Use $abe-engine-server-rules to implement or review ABE Engine server code against its C-first infrastructure and C++ logic-layer boundaries."

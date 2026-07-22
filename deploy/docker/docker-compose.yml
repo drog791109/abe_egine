@@ -1,0 +1,141 @@
+services:
+  dev:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: dev
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-public.ecr.aws/ubuntu/ubuntu:22.04}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}
+        http_proxy: ${HTTP_PROXY:-}
+        https_proxy: ${HTTPS_PROXY:-}
+        no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}
+    image: abe-engine-dev:latest
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    network_mode: host
+    environment:
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}
+      http_proxy: ${HTTP_PROXY:-}
+      https_proxy: ${HTTPS_PROXY:-}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}
+      ABE_MYSQL_HOST: 127.0.0.1
+      ABE_MYSQL_PORT: "3306"
+      ABE_MYSQL_DATABASE: ${MYSQL_DATABASE:-abe_engine}
+      ABE_MYSQL_USER: ${MYSQL_USER:-abe}
+      ABE_MYSQL_PASSWORD: ${MYSQL_PASSWORD:-abe123}
+      ABE_REDIS_HOST: 127.0.0.1
+      ABE_REDIS_PORT: "6379"
+      ABE_RABBITMQ_HOST: 127.0.0.1
+      ABE_RABBITMQ_PORT: "5672"
+      ABE_KAFKA_BROKERS: 127.0.0.1:9092
+      ABE_GRPC_PORT: "50051"
+      ABE_LOG_LEVEL: info
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    command: ["sleep", "infinity"]
+
+  mysql:
+    image: ${MYSQL_IMAGE:-m.daocloud.io/docker.io/mysql:8.0}
+    network_mode: host
+    command:
+      - "--default-authentication-plugin=mysql_native_password"
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-abe_engine}
+      MYSQL_USER: ${MYSQL_USER:-abe}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-abe123}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -uroot -p${MYSQL_ROOT_PASSWORD:-rootpass}
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: ${REDIS_IMAGE:-m.daocloud.io/docker.io/redis:7-alpine}
+    network_mode: host
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: ${RABBITMQ_IMAGE:-m.daocloud.io/docker.io/rabbitmq:3-management}
+    network_mode: host
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-abe}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-abe123}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 20s
+      timeout: 10s
+      retries: 20
+
+  zookeeper:
+    image: ${ZOOKEEPER_IMAGE:-m.daocloud.io/docker.io/zookeeper:3.9}
+    network_mode: host
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    volumes:
+      - zookeeper_data:/data
+      - zookeeper_datalog:/datalog
+
+  kafka:
+    image: ${KAFKA_IMAGE:-m.daocloud.io/docker.io/apache/kafka:3.7.0}
+    network_mode: host
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1
+      interval: 15s
+      timeout: 10s
+      retries: 30
+
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:
+  zookeeper_data:
+  zookeeper_datalog:
+  kafka_data:
