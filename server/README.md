@@ -22,7 +22,7 @@ server/
       adapters/   将 base/common 的 C 接口适配为不高于 C++11 的简单 RAII 和类接口
   logic/          游戏业务逻辑和玩法模块，可使用 C++11+
   services/       可独立启动的服务进程入口和组装层
-  proto/          协议定义源文件，分为 client 和 internal
+  share/proto/    协议定义源文件，分为 client 和 internal
 ```
 
 ## Engine 接口硬约束
@@ -52,7 +52,7 @@ server/
 - 只有当 `base/common` 的 C 接口确实需要原生 C++ 实现时，才允许在 `backends` 中增加范围最小的 C ABI 桥接。
 - `logic` 可以依赖 `base`、`common`、`log` 和 `adapters`，但不得直接依赖具体 `backends` 或包含第三方后端头文件。
 - `services` 负责进程入口、配置加载、后端选择、依赖装配和服务生命周期，不承载复杂玩法逻辑。
-- `proto/client` 放客户端协议，`proto/internal` 放服务间协议。
+- `share/proto/client` 放客户端协议，`share/proto/internal` 放服务间协议。
 
 数据库模块的目标结构示例：
 
@@ -62,16 +62,47 @@ engine/src/backends/db_mysql/  基于 MySQL C API 的具体实现
 engine/src/adapters/db_cpp/    基于 abe_db_t 的 C++11 及以下简单 RAII/类接口
 ```
 
-网络模块的 C++ 适配位于 `engine/src/adapters/net`，只基于 `base/net` 的 C 接口提供
-`Loop`、`TcpListener`、`TcpLink` 和 `UdpLink` 这类简单 RAII 封装，不直接包含 libevent 等具体后端接口。
+数据库、消息和缓存后端放在 `engine/src/backends`，只暴露项目自己的 C 接口，第三方头文件只允许出现在
+对应 `.c` 实现文件中：
+
+```text
+engine/src/backends/db_mysql/  基于 MySQL C API 的数据库实现
+engine/src/backends/redis/     基于 hiredis 的 Redis 同步命令接口
+engine/src/backends/kafka/     基于 librdkafka 的 Kafka producer/consumer 接口
+engine/src/backends/rabbitmq/  基于 rabbitmq-c 的 RabbitMQ publish/consume 接口
+```
+
+这些后端都是可选构建目标。缺少对应开发包时，CMake 会跳过该 target，不影响基础 engine 构建。
+
+网络模块的 C++ 适配位于 `engine/src/adapters/net`，只基于 `base/net` 的 C 接口提供简单封装，
+不直接包含 libevent 等具体后端接口。
+
+- `Loop` 封装事件循环，`update()` 是非阻塞轮询，适合服务主循环每帧调用。
+- `TcpLink` 表示一条已经建立的 TCP 连接，用于 `connect`、`send`、`disconnect`、
+  `on_connect`、`on_receive` 和 `on_disconnect`。
+- `UdpLink` 表示一个 UDP 端点，用于 `bind`、`send_to`、`unbind` 和 `on_receive`。
+- `TcpListener` 是偏底层的监听 socket 封装，只负责 `listen` 和 accept。accept 回调中传入的
+  `TcpLink` 只在回调期间有效；需要保存服务端连接时，用自己的 `TcpLink` 调用 `attach()` 接管。
+- `TcpServer` 是服务端运行层封装，内部包含一个 `TcpListener`，并使用调用方传入的 `TcpLink`
+  数组保存多条客户端连接。它提供 `init()`、`update()`、`close()`、`send_to_all()`、
+  `active_count()` 和 `capacity()`。
+- `TcpClient` 是客户端运行层封装，使用调用方传入的 `TcpLink` 数组保存多条外连连接。
+  `connect_one()` 每次占用一个空闲 link 发起连接，多个 link 时可以多次调用。
+
+文件职责上，`abe_net_link.h/.cpp` 只放 `Loop`、`TcpLink`、`TcpListener` 和 `UdpLink`；
+`abe_net_server.h/.cpp` 只放 `TcpServer` 和 `TcpClient` 运行层封装。
+
+TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `receive`，避免 adapter 层维护额外
+缓存队列或改变 `base/net` 的事件模型。`TcpServer/TcpClient` 不自己创建连接数组，调用方负责
+提供存储并保证它们的生命周期覆盖 `init()` 到 `close()`。
 
 ## 当前迁移说明
 
 - 原顶层 `server/gate`、`server/lobby`、`server/game` 已统一归入 `server/services/`，避免服务进程散落在源码根目录。
 - 原 `server/engine/src/module` 曾统一改名为 `adapters`；现在进一步拆分为 `backends` 和 `adapters`，避免“第三方后端实现”和“C 到 C++ 适配”共用同一个概念。
-- 当前 `engine/src/adapters/db_mysql` 等具体后端目录属于迁移前路径，后续代码调整时移入 `engine/src/backends`；spdlog 已按新规则位于 `engine/src/log`。
+- MySQL、Redis、Kafka 和 RabbitMQ 已按新规则放入 `engine/src/backends`，spdlog 已按新规则位于 `engine/src/log`。
 - 后续新增的 C++ 包装只放入 `engine/src/adapters`，编译标准不高于 C++11，且不在公共接口中暴露 STL，例如基于 `abe_db_t` 的数据库 RAII 接口。
-- `server/proto` 保持在 engine 外部，避免游戏协议定义被误认为引擎基础设施的一部分。
+- `server/share/proto` 保持在 engine 外部，避免游戏协议定义被误认为引擎基础设施的一部分。
 
 ## 日志约定
 

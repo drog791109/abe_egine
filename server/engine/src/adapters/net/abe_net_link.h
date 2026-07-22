@@ -20,10 +20,19 @@ typedef void (*TcpAcceptCallback)(
     const abe_net_addr_t* peer,
     void* user_data);
 
-typedef void (*TcpMessageCallback)(
+typedef void (*TcpReceiveCallback)(
     TcpLink* link,
     const void* data,
     uint32_t size,
+    void* user_data);
+
+typedef void (*TcpConnectCallback)(
+    TcpLink* link,
+    void* user_data);
+
+typedef void (*TcpDisconnectCallback)(
+    TcpLink* link,
+    int error_code,
     void* user_data);
 
 typedef void (*TcpEventCallback)(
@@ -32,7 +41,7 @@ typedef void (*TcpEventCallback)(
     int error_code,
     void* user_data);
 
-typedef void (*UdpMessageCallback)(
+typedef void (*UdpReceiveCallback)(
     UdpLink* link,
     const void* data,
     uint32_t size,
@@ -41,13 +50,15 @@ typedef void (*UdpMessageCallback)(
 
 struct TcpCallbacks {
     TcpAcceptCallback on_accept;
-    TcpMessageCallback on_message;
+    TcpConnectCallback on_connect;
+    TcpReceiveCallback on_receive;
+    TcpDisconnectCallback on_disconnect;
     TcpEventCallback on_event;
     void* user_data;
 };
 
 struct UdpCallbacks {
-    UdpMessageCallback on_message;
+    UdpReceiveCallback on_receive;
     void* user_data;
 };
 
@@ -75,6 +86,7 @@ public:
     void destroy();
     int run();
     int run_once();
+    int update();
     int stop();
 
     int valid() const;
@@ -92,10 +104,25 @@ public:
     TcpLink();
     ~TcpLink();
 
+    /*
+     * TcpLink wraps one TCP connection. connect() creates an outbound
+     * connection. Incoming bytes are delivered through on_receive.
+     * Disconnects are delivered through on_disconnect.
+     * attach() takes over a callback-local accepted link.
+     */
     int connect(Loop* loop, const TcpConfig* config);
-    int attach(abe_net_tcp_conn_t* conn, int close_on_destroy);
+    int connect(Loop* loop, const char* host, uint16_t port);
+    int attach(TcpLink* link, int close_on_destroy);
     void detach();
+    void disconnect();
     void close();
+
+    void set_callbacks(const TcpCallbacks* callbacks);
+    void set_user_data(void* user_data);
+    void on_connect(TcpConnectCallback callback);
+    void on_receive(TcpReceiveCallback callback);
+    void on_disconnect(TcpDisconnectCallback callback);
+    void on_event(TcpEventCallback callback);
 
     int send(const void* data, uint32_t size);
     int get_peer_addr(abe_net_addr_t* out_addr) const;
@@ -105,6 +132,17 @@ public:
     abe_net_tcp_conn_t* handle() const;
 
 private:
+    friend class TcpListener;
+
+    int attach_handle(
+        abe_net_tcp_conn_t* conn,
+        int close_on_destroy,
+        const TcpCallbacks* callbacks,
+        int install_callbacks);
+
+    static void fill_raw_callbacks(
+        abe_net_tcp_callbacks_t* raw_callbacks,
+        void* user_data);
     static void raw_message_callback(
         abe_net_tcp_conn_t* conn,
         const void* data,
@@ -129,6 +167,10 @@ public:
     TcpListener();
     ~TcpListener();
 
+    /*
+     * TcpListener owns the listen socket. Each accepted connection is exposed
+     * as a callback-local TcpLink.
+     */
     int listen(Loop* loop, const TcpConfig* config);
     void close();
 
@@ -164,8 +206,18 @@ public:
     UdpLink();
     ~UdpLink();
 
+    /*
+     * UdpLink wraps one UDP endpoint. bind() opens the local endpoint and
+     * datagrams are delivered through on_receive.
+     */
     int bind(Loop* loop, const UdpConfig* config);
+    int bind(Loop* loop, const char* host, uint16_t port);
+    void unbind();
     void close();
+
+    void set_callbacks(const UdpCallbacks* callbacks);
+    void set_user_data(void* user_data);
+    void on_receive(UdpReceiveCallback callback);
 
     int send_to(const char* host, uint16_t port, const void* data, uint32_t size);
 

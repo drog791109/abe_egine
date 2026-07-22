@@ -21,6 +21,20 @@ static void udp_callbacks_clear(UdpCallbacks* callbacks)
     }
 }
 
+void TcpLink::fill_raw_callbacks(
+    abe_net_tcp_callbacks_t* raw_callbacks,
+    void* user_data)
+{
+    if (raw_callbacks == NULL) {
+        return;
+    }
+
+    memset(raw_callbacks, 0, sizeof(*raw_callbacks));
+    raw_callbacks->on_message = TcpLink::raw_message_callback;
+    raw_callbacks->on_event = TcpLink::raw_event_callback;
+    raw_callbacks->user_data = user_data;
+}
+
 void TcpLink::raw_message_callback(
     abe_net_tcp_conn_t* conn,
     const void* data,
@@ -35,8 +49,8 @@ void TcpLink::raw_message_callback(
         TcpCallbacks callbacks;
 
         callbacks = link->callbacks_;
-        if (callbacks.on_message != NULL) {
-            callbacks.on_message(link, data, size, callbacks.user_data);
+        if (callbacks.on_receive != NULL) {
+            callbacks.on_receive(link, data, size, callbacks.user_data);
         }
     }
 }
@@ -55,11 +69,18 @@ void TcpLink::raw_event_callback(
         TcpCallbacks callbacks;
 
         callbacks = link->callbacks_;
+        if (event == ABE_NET_TCP_EVENT_CONNECTED &&
+            callbacks.on_connect != NULL) {
+            callbacks.on_connect(link, callbacks.user_data);
+        }
         if (callbacks.on_event != NULL) {
             callbacks.on_event(link, event, error_code, callbacks.user_data);
         }
         if (event == ABE_NET_TCP_EVENT_CLOSED ||
             event == ABE_NET_TCP_EVENT_ERROR) {
+            if (callbacks.on_disconnect != NULL) {
+                callbacks.on_disconnect(link, error_code, callbacks.user_data);
+            }
             link->detach();
         }
     }
@@ -79,8 +100,8 @@ void TcpListener::raw_accept_callback(
         TcpLink link;
         TcpCallbacks callbacks;
 
-        (void)link.attach(conn, 0);
         callbacks = tcp_listener->callbacks_;
+        (void)link.attach_handle(conn, 0, &callbacks, 0);
         callbacks.on_accept(
             tcp_listener,
             &link,
@@ -98,13 +119,13 @@ void TcpListener::raw_message_callback(
     TcpListener* listener;
 
     listener = (TcpListener*)user_data;
-    if (listener != NULL && listener->callbacks_.on_message != NULL) {
+    if (listener != NULL && listener->callbacks_.on_receive != NULL) {
         TcpLink link;
         TcpCallbacks callbacks;
 
-        (void)link.attach(conn, 0);
         callbacks = listener->callbacks_;
-        callbacks.on_message(
+        (void)link.attach_handle(conn, 0, &callbacks, 0);
+        callbacks.on_receive(
             &link,
             data,
             size,
@@ -125,13 +146,28 @@ void TcpListener::raw_event_callback(
         TcpLink link;
         TcpCallbacks callbacks;
 
-        (void)link.attach(conn, 0);
         callbacks = listener->callbacks_;
+        (void)link.attach_handle(conn, 0, &callbacks, 0);
         callbacks.on_event(
             &link,
             event,
             error_code,
             callbacks.user_data);
+        if ((event == ABE_NET_TCP_EVENT_CLOSED ||
+             event == ABE_NET_TCP_EVENT_ERROR) &&
+            callbacks.on_disconnect != NULL) {
+            callbacks.on_disconnect(&link, error_code, callbacks.user_data);
+        }
+    } else if (listener != NULL && listener->callbacks_.on_disconnect != NULL) {
+        TcpLink link;
+        TcpCallbacks callbacks;
+
+        callbacks = listener->callbacks_;
+        (void)link.attach_handle(conn, 0, &callbacks, 0);
+        if (event == ABE_NET_TCP_EVENT_CLOSED ||
+            event == ABE_NET_TCP_EVENT_ERROR) {
+            callbacks.on_disconnect(&link, error_code, callbacks.user_data);
+        }
     }
 }
 
@@ -150,8 +186,8 @@ void UdpLink::raw_message_callback(
         UdpCallbacks callbacks;
 
         callbacks = link->callbacks_;
-        if (callbacks.on_message != NULL) {
-            callbacks.on_message(link, data, size, peer, callbacks.user_data);
+        if (callbacks.on_receive != NULL) {
+            callbacks.on_receive(link, data, size, peer, callbacks.user_data);
         }
     }
 }
@@ -187,6 +223,11 @@ int Loop::run()
 int Loop::run_once()
 {
     return abe_net_loop_run_once(loop_);
+}
+
+int Loop::update()
+{
+    return abe_net_loop_update(loop_);
 }
 
 int Loop::stop()
@@ -236,9 +277,7 @@ int TcpLink::connect(Loop* loop, const TcpConfig* config)
     raw_config.port = config->port;
     raw_config.max_packet_size = config->max_packet_size;
     raw_config.backlog = config->backlog;
-    raw_config.callbacks.on_message = TcpLink::raw_message_callback;
-    raw_config.callbacks.on_event = TcpLink::raw_event_callback;
-    raw_config.callbacks.user_data = this;
+    TcpLink::fill_raw_callbacks(&raw_config.callbacks, this);
 
     raw_conn = NULL;
     rc = abe_net_tcp_connect(loop->handle(), &raw_config, &raw_conn);
@@ -252,8 +291,84 @@ int TcpLink::connect(Loop* loop, const TcpConfig* config)
     return ABE_NET_OK;
 }
 
-int TcpLink::attach(abe_net_tcp_conn_t* conn, int close_on_destroy)
+int TcpLink::connect(Loop* loop, const char* host, uint16_t port)
 {
+    TcpConfig config;
+
+    memset(&config, 0, sizeof(config));
+    config.host = host;
+    config.port = port;
+    config.callbacks = callbacks_;
+    return connect(loop, &config);
+}
+
+int TcpLink::attach(TcpLink* link, int close_on_destroy)
+{
+    int rc;
+
+    if (link == NULL || !link->valid()) {
+        return ABE_NET_INVALID_ARG;
+    }
+    if (link == this) {
+        return ABE_NET_INVALID_ARG;
+    }
+
+    rc = attach_handle(link->handle(), close_on_destroy, &link->callbacks_, 1);
+    if (rc == ABE_NET_OK) {
+        link->detach();
+    }
+    return rc;
+}
+
+void TcpLink::set_callbacks(const TcpCallbacks* callbacks)
+{
+    abe_net_tcp_callbacks_t raw_callbacks;
+
+    if (callbacks == NULL) {
+        tcp_callbacks_clear(&callbacks_);
+    } else {
+        callbacks_ = *callbacks;
+    }
+
+    if (conn_ != NULL) {
+        TcpLink::fill_raw_callbacks(&raw_callbacks, this);
+        abe_net_tcp_set_callbacks(conn_, &raw_callbacks);
+    }
+}
+
+void TcpLink::set_user_data(void* user_data)
+{
+    callbacks_.user_data = user_data;
+}
+
+void TcpLink::on_connect(TcpConnectCallback callback)
+{
+    callbacks_.on_connect = callback;
+}
+
+void TcpLink::on_receive(TcpReceiveCallback callback)
+{
+    callbacks_.on_receive = callback;
+}
+
+void TcpLink::on_disconnect(TcpDisconnectCallback callback)
+{
+    callbacks_.on_disconnect = callback;
+}
+
+void TcpLink::on_event(TcpEventCallback callback)
+{
+    callbacks_.on_event = callback;
+}
+
+int TcpLink::attach_handle(
+    abe_net_tcp_conn_t* conn,
+    int close_on_destroy,
+    const TcpCallbacks* callbacks,
+    int install_callbacks)
+{
+    abe_net_tcp_callbacks_t raw_callbacks;
+
     if (conn == NULL) {
         return ABE_NET_INVALID_ARG;
     }
@@ -262,6 +377,14 @@ int TcpLink::attach(abe_net_tcp_conn_t* conn, int close_on_destroy)
     }
     conn_ = conn;
     close_on_destroy_ = close_on_destroy != 0 ? 1 : 0;
+    if (callbacks != NULL) {
+        callbacks_ = *callbacks;
+    }
+
+    if (install_callbacks != 0) {
+        TcpLink::fill_raw_callbacks(&raw_callbacks, this);
+        abe_net_tcp_set_callbacks(conn_, &raw_callbacks);
+    }
     return ABE_NET_OK;
 }
 
@@ -269,6 +392,11 @@ void TcpLink::detach()
 {
     conn_ = NULL;
     close_on_destroy_ = 0;
+}
+
+void TcpLink::disconnect()
+{
+    close();
 }
 
 void TcpLink::close()
@@ -406,6 +534,41 @@ int UdpLink::bind(Loop* loop, const UdpConfig* config)
 
     endpoint_ = raw_endpoint;
     return ABE_NET_OK;
+}
+
+int UdpLink::bind(Loop* loop, const char* host, uint16_t port)
+{
+    UdpConfig config;
+
+    memset(&config, 0, sizeof(config));
+    config.host = host;
+    config.port = port;
+    config.callbacks = callbacks_;
+    return bind(loop, &config);
+}
+
+void UdpLink::set_callbacks(const UdpCallbacks* callbacks)
+{
+    if (callbacks == NULL) {
+        udp_callbacks_clear(&callbacks_);
+    } else {
+        callbacks_ = *callbacks;
+    }
+}
+
+void UdpLink::set_user_data(void* user_data)
+{
+    callbacks_.user_data = user_data;
+}
+
+void UdpLink::on_receive(UdpReceiveCallback callback)
+{
+    callbacks_.on_receive = callback;
+}
+
+void UdpLink::unbind()
+{
+    close();
 }
 
 void UdpLink::close()

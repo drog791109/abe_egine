@@ -1,5 +1,6 @@
 add_library(abe_adapter_net STATIC
     abe_net_link.cpp
+    abe_net_server.cpp
 )
 
 set_target_properties(abe_adapter_net

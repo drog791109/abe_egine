@@ -3,11 +3,19 @@ cmake_minimum_required(VERSION 3.16)
 project(abe_engine C CXX)
 
 option(ABE_ENGINE_BUILD_TESTS "Build ABE engine tests" ON)
+option(ABE_ENGINE_BUILD_LOGIC "Build ABE logic modules" ON)
 
 add_subdirectory(src/base)
 add_subdirectory(src/common)
+add_subdirectory(src/backends)
 add_subdirectory(src/log)
 add_subdirectory(src/adapters)
+
+if(ABE_ENGINE_BUILD_LOGIC)
+    add_subdirectory(
+        ${CMAKE_CURRENT_SOURCE_DIR}/../logic
+        ${CMAKE_CURRENT_BINARY_DIR}/logic)
+endif()
 
 if(ABE_ENGINE_BUILD_TESTS)
     enable_testing()
@@ -21,6 +29,14 @@ if(ABE_ENGINE_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/../../test/unit/log
         ${CMAKE_CURRENT_BINARY_DIR}/test/unit/log)
     add_subdirectory(
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../test/unit/backends
+        ${CMAKE_CURRENT_BINARY_DIR}/test/unit/backends)
+    add_subdirectory(
         ${CMAKE_CURRENT_SOURCE_DIR}/../../test/unit/adapters
         ${CMAKE_CURRENT_BINARY_DIR}/test/unit/adapters)
+    if(ABE_ENGINE_BUILD_LOGIC)
+        add_subdirectory(
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../test/unit/logic
+            ${CMAKE_CURRENT_BINARY_DIR}/test/unit/logic)
+    endif()
 endif()

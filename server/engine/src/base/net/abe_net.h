@@ -112,6 +112,7 @@ int abe_net_loop_create(abe_net_loop_t** out_loop);
 void abe_net_loop_destroy(abe_net_loop_t* loop);
 int abe_net_loop_run(abe_net_loop_t* loop);
 int abe_net_loop_run_once(abe_net_loop_t* loop);
+int abe_net_loop_update(abe_net_loop_t* loop);
 int abe_net_loop_stop(abe_net_loop_t* loop);
 
 int abe_net_tcp_listen(
@@ -129,6 +130,10 @@ int abe_net_tcp_send(abe_net_tcp_conn_t* conn, const void* data, uint32_t size);
 void abe_net_tcp_close(abe_net_tcp_conn_t* conn);
 void abe_net_tcp_set_user_data(abe_net_tcp_conn_t* conn, void* user_data);
 void* abe_net_tcp_get_user_data(abe_net_tcp_conn_t* conn);
+/* Replaces callbacks for an existing connection. Callback pointers are copied. */
+void abe_net_tcp_set_callbacks(
+    abe_net_tcp_conn_t* conn,
+    const abe_net_tcp_callbacks_t* callbacks);
 int abe_net_tcp_get_peer_addr(abe_net_tcp_conn_t* conn, abe_net_addr_t* out_addr);
 
 int abe_net_udp_bind(

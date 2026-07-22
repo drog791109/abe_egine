@@ -620,6 +620,14 @@ int abe_net_loop_run_once(abe_net_loop_t* loop)
     return event_base_loop(loop->base, EVLOOP_ONCE) >= 0 ? ABE_NET_OK : ABE_NET_ERROR;
 }
 
+int abe_net_loop_update(abe_net_loop_t* loop)
+{
+    if (loop == NULL || loop->base == NULL) {
+        return ABE_NET_INVALID_ARG;
+    }
+    return event_base_loop(loop->base, EVLOOP_NONBLOCK) >= 0 ? ABE_NET_OK : ABE_NET_ERROR;
+}
+
 int abe_net_loop_stop(abe_net_loop_t* loop)
 {
     if (loop == NULL || loop->base == NULL) {
@@ -776,6 +784,15 @@ void* abe_net_tcp_get_user_data(abe_net_tcp_conn_t* conn)
         return NULL;
     }
     return conn->callbacks.user_data;
+}
+
+void abe_net_tcp_set_callbacks(
+    abe_net_tcp_conn_t* conn,
+    const abe_net_tcp_callbacks_t* callbacks)
+{
+    if (conn != NULL && callbacks != NULL) {
+        conn->callbacks = *callbacks;
+    }
 }
 
 int abe_net_tcp_get_peer_addr(abe_net_tcp_conn_t* conn, abe_net_addr_t* out_addr)

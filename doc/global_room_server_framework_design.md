@@ -682,9 +682,9 @@ doc/
 - `server/engine/src/adapters`：将 `base/common` C 接口适配为不高于 C++11 的简单 RAII 和类接口；不承载具体后端，公共接口不暴露 STL，也不得要求 C++14+。
 - `server/logic`：游戏业务逻辑和玩法模块，可使用 C++11+，可依赖 `base/common/log/adapters`，但不能反向污染基础设施编译标准，也不直接依赖具体 `backends`。
 - `server/services`：可独立启动的服务进程入口和组装层，例如 Gateway、Lobby、Coordinator、Match、Session、Settlement；负责选择并链接具体后端。
-- `server/proto`：协议定义源文件。`client` 面向客户端协议，`internal` 面向服务间协议；生成代码后续可按语言和构建系统单独放入生成目录。
+- `server/share/proto`：协议定义源文件。`client` 面向客户端协议，`internal` 面向服务间协议；生成代码后续可按语言和构建系统单独放入生成目录。
 
-当前仓库中的 `engine/src/adapters/db_mysql` 等具体后端目录属于迁移前路径；spdlog 已按新规则迁入 `engine/src/log`。其余具体后端后续按同一规则迁移，在迁移完成前以本节职责定义作为新增代码和评审标准。
+当前仓库中的 MySQL、Redis、RabbitMQ、Kafka 具体后端已按新规则放入 `engine/src/backends`；spdlog 已按新规则迁入 `engine/src/log`。后续新增具体后端继续放入 `backends`，只向外暴露项目自己的 C 接口。
 
 基础设施层建议以独立静态库或共享库组织：
 

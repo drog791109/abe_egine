@@ -1,0 +1,411 @@
+syntax = "proto3";
+
+package abe.proto.client;
+
+option cc_enable_arenas = true;
+
+enum ProtocolId {
+  MSG_ID_INVALID = 0;
+
+  // Each protocol id maps to a payload message named PB_<enum_name>.
+  SS_FORWARD_PACKET = 9001;
+  SS_FORWARD_DISCONNECT = 9002;
+  UDP_PING = 9003;
+  UDP_PONG = 9004;
+  SS_BROADCAST_PACKET = 9005;
+
+  CS_LOGIN_REQ = 10001;
+  SC_LOGIN_RESP = 10002;
+  CS_HEARTBEAT = 10003;
+  SC_KICK_NOTIFY = 10004;
+  SC_HEARTBEAT = 10005;
+  SC_ERROR_RESP = 10006;
+  CS_HORN_REQ = 10007;
+  SC_HORN_NOTIFY = 10008;
+
+  CS_ENTER_LOBBY_REQ = 11001;
+  SC_ENTER_LOBBY_RESP = 11002;
+  CS_ROOM_LIST_REQ = 11003;
+  SC_ROOM_LIST_RESP = 11004;
+  CS_CREATE_ROOM_REQ = 11005;
+  SC_CREATE_ROOM_RESP = 11006;
+  CS_JOIN_ROOM_REQ = 11007;
+  SC_JOIN_ROOM_RESP = 11008;
+
+  CS_UPDATE_ROOM_STATE_REQ = 11030;
+  SC_UPDATE_ROOM_STATE_RESP = 11031;
+  CS_FETCH_ROOM_ARCHIVE_REQ = 11032;
+  SC_FETCH_ROOM_ARCHIVE_RESP = 11033;
+  SC_ROOM_MEMBERS_NOTIFY = 11034;
+  CS_LOBBY_CHAT_REQ = 11035;
+  SC_LOBBY_CHAT_NOTIFY = 11036;
+
+  CS_ENTER_GAME_REQ = 12001;
+  SC_ENTER_GAME_RESP = 12002;
+  CS_LEAVE_GAME_REQ = 12003;
+  CS_GAME_ACTION_REQ = 12004;
+  SC_GAME_ACTION_BROADCAST = 12005;
+  CS_ROOM_CHAT_REQ = 12006;
+  SC_ROOM_CHAT_NOTIFY = 12007;
+  SC_GAME_OVER_NOTIFY = 12098;
+  SC_LEAVE_GAME_RESP = 12099;
+}
+
+enum ErrorCode {
+  ERROR_CODE_OK = 0;
+
+  ERROR_CODE_COMMON_UNKNOWN = 10000;
+  ERROR_CODE_COMMON_INVALID_ARGUMENT = 10001;
+  ERROR_CODE_COMMON_TIMEOUT = 10002;
+  ERROR_CODE_COMMON_SERVER_BUSY = 10003;
+  ERROR_CODE_COMMON_PROTOCOL_ERROR = 10004;
+
+  ERROR_CODE_AUTH_FAILED = 20000;
+  ERROR_CODE_AUTH_TOKEN_EXPIRED = 20001;
+  ERROR_CODE_AUTH_DUPLICATE_LOGIN = 20002;
+
+  ERROR_CODE_SESSION_NOT_FOUND = 30000;
+  ERROR_CODE_SESSION_EXPIRED = 30001;
+
+  ERROR_CODE_ROOM_NOT_FOUND = 50000;
+  ERROR_CODE_ROOM_FULL = 50001;
+  ERROR_CODE_ROOM_VERSION_MISMATCH = 50002;
+  ERROR_CODE_ROOM_JOIN_TOKEN_INVALID = 50003;
+  ERROR_CODE_ROOM_ALREADY_IN_ROOM = 50004;
+
+  ERROR_CODE_GAME_NOT_READY = 70000;
+  ERROR_CODE_GAME_ALREADY_ENTERED = 70001;
+
+  ERROR_CODE_SYSTEM_INTERNAL = 90000;
+  ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE = 90001;
+}
+
+message PB_MESSAGE_HEADER {
+  ProtocolId protocol_id = 1;
+  uint64 seq = 2;
+  uint64 uid = 3;
+  uint64 client_time_ms = 4;
+  uint64 server_time_ms = 5;
+  string trace_id = 6;
+}
+
+message PB_RESULT {
+  ErrorCode error_code = 1;
+  string message = 2;
+}
+
+message PB_PLAYER_ID {
+  uint64 uid = 1;
+  string open_id = 2;
+}
+
+message PB_ROOM_ID {
+  uint64 room_id = 1;
+  uint64 room_version = 2;
+}
+
+message PB_NET_ENDPOINT {
+  string host = 1;
+  uint32 port = 2;
+}
+
+message PB_VECTOR2 {
+  float x = 1;
+  float y = 2;
+}
+
+message PB_VECTOR3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message PB_PLAYER_INFO {
+  uint64 uid = 1;
+  bool sex = 2;
+  PB_VECTOR3 pos = 3;
+}
+
+message PB_ROOM_MEMBER {
+  PB_PLAYER_ID player = 1;
+  uint32 seat = 2;
+  uint32 state = 3;
+  PB_VECTOR3 pos = 4;
+}
+
+message PB_ROOM_SUMMARY {
+  PB_ROOM_ID room = 1;
+  uint64 owner_uid = 2;
+  uint32 game_mode = 3;
+  uint32 capacity = 4;
+  uint32 member_count = 5;
+  uint32 state = 6;
+  string region = 7;
+}
+
+message PB_CHAT_MESSAGE {
+  PB_PLAYER_ID sender = 1;
+  string content = 2;
+  uint32 channel = 3;
+  uint64 server_time_ms = 4;
+}
+
+message PB_SS_FORWARD_PACKET {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  PB_ROOM_ID room = 3;
+  bytes payload = 4;
+}
+
+message PB_SS_FORWARD_DISCONNECT {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  PB_ROOM_ID room = 3;
+  string reason = 4;
+}
+
+message PB_UDP_PING {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 client_send_time_ms = 2;
+}
+
+message PB_UDP_PONG {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 server_send_time_ms = 2;
+}
+
+message PB_SS_BROADCAST_PACKET {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  repeated uint64 uid_list = 3;
+  bytes payload = 4;
+}
+
+message PB_CS_LOGIN_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  string account = 2;
+  string token = 3;
+  string device_id = 4;
+  string client_version = 5;
+}
+
+message PB_SC_LOGIN_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  PB_PLAYER_ID player = 3;
+  string session_token = 4;
+  uint64 session_expire_time_ms = 5;
+}
+
+message PB_CS_HEARTBEAT {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 client_send_time_ms = 2;
+}
+
+message PB_SC_KICK_NOTIFY {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  string reason = 3;
+}
+
+message PB_SC_HEARTBEAT {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 server_send_time_ms = 2;
+}
+
+message PB_SC_ERROR_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+}
+
+message PB_CS_HORN_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  uint32 channel = 3;
+  string content = 4;
+}
+
+message PB_SC_HORN_NOTIFY {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  uint32 channel = 3;
+  string content = 4;
+}
+
+message PB_CS_ENTER_LOBBY_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+}
+
+message PB_SC_ENTER_LOBBY_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  PB_PLAYER_ID player = 3;
+  uint64 lobby_time_ms = 4;
+}
+
+message PB_CS_ROOM_LIST_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  uint32 page = 3;
+  uint32 page_size = 4;
+  uint32 game_mode = 5;
+  string region = 6;
+}
+
+message PB_SC_ROOM_LIST_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  repeated PB_ROOM_SUMMARY room_list = 3;
+  uint32 total_count = 4;
+}
+
+message PB_CS_CREATE_ROOM_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  string client_request_id = 3;
+  uint32 game_mode = 4;
+  uint32 capacity = 5;
+  string region_hint = 6;
+  repeated uint64 invited_uids = 7;
+}
+
+message PB_SC_CREATE_ROOM_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  PB_ROOM_ID room = 3;
+  string join_token = 4;
+  PB_NET_ENDPOINT room_endpoint = 5;
+}
+
+message PB_CS_JOIN_ROOM_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  PB_ROOM_ID room = 3;
+  string join_token = 4;
+  uint64 known_room_version = 5;
+}
+
+message PB_SC_JOIN_ROOM_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  PB_ROOM_ID room = 3;
+  bytes room_snapshot = 4;
+}
+
+message PB_CS_UPDATE_ROOM_STATE_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  uint32 state = 3;
+  bytes state_blob = 4;
+}
+
+message PB_SC_UPDATE_ROOM_STATE_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  PB_ROOM_ID room = 3;
+}
+
+message PB_CS_FETCH_ROOM_ARCHIVE_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  uint64 since_seq = 3;
+}
+
+message PB_SC_FETCH_ROOM_ARCHIVE_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  PB_ROOM_ID room = 3;
+  bytes archive = 4;
+}
+
+message PB_SC_ROOM_MEMBERS_NOTIFY {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  repeated PB_ROOM_MEMBER member_list = 3;
+}
+
+message PB_CS_LOBBY_CHAT_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  uint32 channel = 3;
+  string content = 4;
+}
+
+message PB_SC_LOBBY_CHAT_NOTIFY {
+  PB_MESSAGE_HEADER header = 1;
+  PB_CHAT_MESSAGE chat = 2;
+}
+
+message PB_CS_ENTER_GAME_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 uid = 2;
+  PB_ROOM_ID room = 3;
+  string session_token = 4;
+  uint32 client_ready_version = 5;
+}
+
+message PB_SC_ENTER_GAME_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  PB_ROOM_ID room = 3;
+  uint64 game_start_time_ms = 4;
+  uint32 tick_rate = 5;
+  bytes game_snapshot = 6;
+}
+
+message PB_CS_LEAVE_GAME_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  uint32 reason = 3;
+}
+
+message PB_SC_LEAVE_GAME_RESP {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+  PB_ROOM_ID room = 3;
+  uint32 reason = 4;
+}
+
+message PB_CS_GAME_ACTION_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  uint32 seq = 3;
+  uint64 client_time_ms = 4;
+  bytes payload = 5;
+}
+
+message PB_SC_GAME_ACTION_BROADCAST {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  uint64 server_time_ms = 3;
+  uint32 tick = 4;
+  bytes payload = 5;
+}
+
+message PB_CS_ROOM_CHAT_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  string content = 3;
+}
+
+message PB_SC_ROOM_CHAT_NOTIFY {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  PB_PLAYER_ID sender = 3;
+  string content = 4;
+}
+
+message PB_SC_GAME_OVER_NOTIFY {
+  PB_MESSAGE_HEADER header = 1;
+  PB_ROOM_ID room = 2;
+  uint64 round_id = 3;
+  uint32 reason = 4;
+  bytes summary = 5;
+}
+
+// Optional legacy payload kept because the current client-side split used it.
+message PB_CS_PLAYER_MOVE_REQ {
+  PB_MESSAGE_HEADER header = 1;
+  repeated PB_PLAYER_INFO player_list = 2;
+}
