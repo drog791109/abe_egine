@@ -1,5 +1,6 @@
 add_library(abe_logic_session STATIC
-    abe_session_manager.cpp
+    abe_session.cpp
+    abe_session_server.cpp
 )
 
 set_target_properties(abe_logic_session

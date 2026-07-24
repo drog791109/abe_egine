@@ -52,6 +52,7 @@ server/
 - 只有当 `base/common` 的 C 接口确实需要原生 C++ 实现时，才允许在 `backends` 中增加范围最小的 C ABI 桥接。
 - `logic` 可以依赖 `base`、`common`、`log` 和 `adapters`，但不得直接依赖具体 `backends` 或包含第三方后端头文件。
 - `services` 负责进程入口、配置加载、后端选择、依赖装配和服务生命周期，不承载复杂玩法逻辑。
+- `services/gateway` 负责把 `engine/adapters/net`、`logic/session` 和协议解码串起来；协议号和消息定义仍然以 `share/proto/client/protocol.proto` 为准。
 - `share/proto/client` 放客户端协议，`share/proto/internal` 放服务间协议。
 
 数据库模块的目标结构示例：
@@ -103,6 +104,41 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - MySQL、Redis、Kafka 和 RabbitMQ 已按新规则放入 `engine/src/backends`，spdlog 已按新规则位于 `engine/src/log`。
 - 后续新增的 C++ 包装只放入 `engine/src/adapters`，编译标准不高于 C++11，且不在公共接口中暴露 STL，例如基于 `abe_db_t` 的数据库 RAII 接口。
 - `server/share/proto` 保持在 engine 外部，避免游戏协议定义被误认为引擎基础设施的一部分。
+- gateway 之类的 service 只消费 `server/share/proto` 的协议定义，不在 service 代码里重复定义协议号和消息结构。
+
+## Gateway 服务
+
+`server/services/gateway` 提供 gateway 进程的基础骨架：
+
+- `abe_gateway` 是可启动进程，默认监听 `0.0.0.0:7000`。
+- `abe_gateway_main.cpp` 只保留参数解析和进程入口，运行对象放在 `GatewayApp`。
+- `GatewayApp` 封装 gateway 进程生命周期，持有 loop、tcp server、service、link 槽位和逻辑 session 槽位。
+- 进程采用单主循环事件驱动模型，不创建业务线程；需要扩容时优先多开进程实例。
+- `GatewayService` 把 `TcpServer` 回调接到 gateway session 和逻辑 `SessionServer`。
+- `GatewaySession` 是每条客户端 link 的 gateway 侧会话对象，负责把该 link 的消息转给对应逻辑 session handler。
+- TCP 外层仍使用 `engine/base/net` 的 4 字节大端长度头。
+- TCP payload 是固定 `MsgHeader` 加变长 `Body`。`MsgHeader` 的二进制编解码在 `engine/src/common/protocol`。
+- `MsgHeader.msg_id` 是消息 ID，`Body` 是 `share/proto/client/protocol.proto` 中定义的 `PB_<消息ID枚举名>` protobuf 消息。
+- gateway 先解固定头得到 `msg_id` 和 body，再按 `msg_id` 分发到 session handler；需要具体 protobuf 对象时，通过 gateway 的消息映射接口把 `msg_id` 自动转换为对应 `PB_` 消息类型。
+
+构建和启动示例：
+
+```bash
+cmake -S server/engine -B build/engine
+cmake --build build/engine --target abe_gateway
+./build/engine/services/gateway/abe_gateway --host 0.0.0.0 --port 7000
+```
+
+常用参数：
+
+```text
+--host <ip>              监听地址，默认 0.0.0.0
+--port <port>            监听端口，默认 7000
+--max-clients <count>    客户端连接槽位，最大 1024
+--server-id <id>         gateway 服务实例 id
+--idle-ms <ms>           session 空闲超时，0 表示不启用
+--tick-ms <ms>           主循环 sleep 毫秒数
+```
 
 ## 日志约定
 

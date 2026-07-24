@@ -4,6 +4,11 @@ project(abe_engine C CXX)
 
 option(ABE_ENGINE_BUILD_TESTS "Build ABE engine tests" ON)
 option(ABE_ENGINE_BUILD_LOGIC "Build ABE logic modules" ON)
+option(ABE_ENGINE_BUILD_SERVICES "Build ABE service modules" ON)
+
+if(ABE_ENGINE_BUILD_SERVICES AND NOT ABE_ENGINE_BUILD_LOGIC)
+    message(FATAL_ERROR "ABE_ENGINE_BUILD_SERVICES requires ABE_ENGINE_BUILD_LOGIC")
+endif()
 
 add_subdirectory(src/base)
 add_subdirectory(src/common)
@@ -15,6 +20,12 @@ if(ABE_ENGINE_BUILD_LOGIC)
     add_subdirectory(
         ${CMAKE_CURRENT_SOURCE_DIR}/../logic
         ${CMAKE_CURRENT_BINARY_DIR}/logic)
+endif()
+
+if(ABE_ENGINE_BUILD_SERVICES)
+    add_subdirectory(
+        ${CMAKE_CURRENT_SOURCE_DIR}/../services
+        ${CMAKE_CURRENT_BINARY_DIR}/services)
 endif()
 
 if(ABE_ENGINE_BUILD_TESTS)
@@ -38,5 +49,10 @@ if(ABE_ENGINE_BUILD_TESTS)
         add_subdirectory(
             ${CMAKE_CURRENT_SOURCE_DIR}/../../test/unit/logic
             ${CMAKE_CURRENT_BINARY_DIR}/test/unit/logic)
+    endif()
+    if(ABE_ENGINE_BUILD_SERVICES)
+        add_subdirectory(
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../test/unit/services
+            ${CMAKE_CURRENT_BINARY_DIR}/test/unit/services)
     endif()
 endif()

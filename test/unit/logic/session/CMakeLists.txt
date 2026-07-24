@@ -1,5 +1,5 @@
 add_executable(abe_logic_session_test
-    abe_session_manager_test.cpp
+    abe_session_test.cpp
 )
 
 set_target_properties(abe_logic_session_test
