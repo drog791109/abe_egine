@@ -1,4 +1,5 @@
 #include "abe_db_mysql.h"
+#include "abe_error.h"
 #include "abe_kafka.h"
 #include "abe_rabbitmq.h"
 #include "abe_redis.h"
@@ -22,6 +23,16 @@ int main(void)
     (void)sizeof(abe_kafka_message_t*);
     (void)sizeof(abe_rabbitmq_t*);
     (void)sizeof(abe_rabbitmq_message_t*);
+
+    if (ABE_REDIS_CONNECT_FAILED != ABE_CONNECT_FAILED) {
+        return 1;
+    }
+    if (ABE_KAFKA_SEND_FAILED != ABE_SEND_FAILED) {
+        return 1;
+    }
+    if (ABE_RABBITMQ_PROTOCOL_ERROR != ABE_PARSE_ERROR) {
+        return 1;
+    }
 
     mysql_config.host = NULL;
     mysql_config.port = 0u;

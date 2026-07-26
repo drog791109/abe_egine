@@ -1,6 +1,8 @@
 #ifndef ABE_DB_H
 #define ABE_DB_H
 
+#include "abe_error.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -11,17 +13,17 @@ typedef struct abe_db abe_db_t;
 typedef struct abe_db_result abe_db_result_t;
 
 typedef enum abe_db_status {
-    ABE_DB_OK = 0,
-    ABE_DB_ERROR = -1,
-    ABE_DB_INVALID_ARG = -2,
-    ABE_DB_NO_MEMORY = -3,
-    ABE_DB_NOT_CONNECTED = -4,
-    ABE_DB_QUERY_FAILED = -5,
-    ABE_DB_NO_ROW = -6,
-    ABE_DB_OUT_OF_RANGE = -7,
-    ABE_DB_BAD_VALUE = -8,
-    ABE_DB_BUFFER_TOO_SMALL = -9,
-    ABE_DB_UNSUPPORTED = -10
+    ABE_DB_OK = ABE_OK,
+    ABE_DB_ERROR = ABE_ERROR,
+    ABE_DB_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_DB_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_DB_NOT_CONNECTED = ABE_NOT_CONNECTED,
+    ABE_DB_QUERY_FAILED = ABE_QUERY_FAILED,
+    ABE_DB_NO_ROW = ABE_NO_ROW,
+    ABE_DB_OUT_OF_RANGE = ABE_OUT_OF_RANGE,
+    ABE_DB_BAD_VALUE = ABE_BAD_VALUE,
+    ABE_DB_BUFFER_TOO_SMALL = ABE_BUFFER_TOO_SMALL,
+    ABE_DB_UNSUPPORTED = ABE_UNSUPPORTED
 } abe_db_status_t;
 
 typedef struct abe_db_async_query_result {

@@ -1,6 +1,8 @@
 #ifndef ABE_CONFIG_H
 #define ABE_CONFIG_H
 
+#include "abe_error.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -10,13 +12,13 @@ extern "C" {
 typedef struct abe_config abe_config_t;
 
 typedef enum abe_config_status {
-    ABE_CONFIG_OK = 0,
-    ABE_CONFIG_ERROR = -1,
-    ABE_CONFIG_INVALID_ARG = -2,
-    ABE_CONFIG_NO_MEMORY = -3,
-    ABE_CONFIG_PARSE_ERROR = -4,
-    ABE_CONFIG_NOT_FOUND = -5,
-    ABE_CONFIG_TYPE_MISMATCH = -6
+    ABE_CONFIG_OK = ABE_OK,
+    ABE_CONFIG_ERROR = ABE_ERROR,
+    ABE_CONFIG_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_CONFIG_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_CONFIG_PARSE_ERROR = ABE_PARSE_ERROR,
+    ABE_CONFIG_NOT_FOUND = ABE_NOT_FOUND,
+    ABE_CONFIG_TYPE_MISMATCH = ABE_TYPE_MISMATCH
 } abe_config_status_t;
 
 typedef enum abe_config_format {

@@ -10,25 +10,22 @@ namespace abe {
 namespace service {
 namespace gateway {
 
-class GatewaySession {
+class GatewaySession : public abe::logic::session::Session {
 public:
     GatewaySession();
 
-    int open(
-        abe::adapter::net::TcpLink* link,
-        abe::logic::session::Session* logic_session);
-    void close();
+    using abe::logic::session::Session::close;
 
-    int handle_message(
-        uint32_t msg_id,
-        const void* data,
-        uint32_t size,
-        uint64_t now_ms);
+    void close();
 
     int active() const;
     uint64_t link_id() const;
     abe::adapter::net::TcpLink* link() const;
-    abe::logic::session::Session* logic_session() const;
+
+protected:
+    virtual int on_open(const abe::logic::session::SessionOpenRequest& request);
+    virtual void on_close(uint32_t reason, uint64_t now_ms);
+    virtual void on_reset();
 
 private:
     static int on_send(
@@ -37,10 +34,9 @@ private:
         uint32_t size,
         void* user_data);
 
-    uint64_t current_link_id() const;
+    void clear_gateway_state();
 
     abe::adapter::net::TcpLink* link_;
-    abe::logic::session::Session* logic_session_;
     uint64_t link_id_;
 };
 

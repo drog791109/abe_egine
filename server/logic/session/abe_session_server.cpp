@@ -1,14 +1,19 @@
 #include "abe_session_server.h"
 
+#include "protocol.pb.h"
+
 #include <stddef.h>
 
 namespace abe {
 namespace logic {
 namespace session {
 
+namespace proto = ::abe::proto::client;
+
 SessionServer::SessionServer()
     : sessions_(NULL),
       session_count_(0u),
+      session_size_(0u),
       active_count_(0u),
       server_id_(0u),
       idle_timeout_ms_(0u),
@@ -20,12 +25,14 @@ int SessionServer::init(const SessionServerConfig& config)
 {
     uint32_t index;
 
-    if (config.server_id == 0u || config.sessions == NULL || config.session_count == 0u) {
-        return SESSION_STATUS_INVALID_ARG;
+    if (config.server_id == 0u || config.sessions == NULL || config.session_count == 0u ||
+        (config.session_size != 0u && config.session_size < (uint32_t)sizeof(Session))) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     sessions_ = config.sessions;
     session_count_ = config.session_count;
+    session_size_ = config.session_size == 0u ? (uint32_t)sizeof(Session) : config.session_size;
     active_count_ = 0u;
     server_id_ = config.server_id;
     idle_timeout_ms_ = config.idle_timeout_ms;
@@ -33,10 +40,10 @@ int SessionServer::init(const SessionServerConfig& config)
 
     index = 0u;
     while (index < session_count_) {
-        sessions_[index].reset();
+        session_at(index)->reset();
         ++index;
     }
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 void SessionServer::close(uint64_t now_ms)
@@ -45,10 +52,13 @@ void SessionServer::close(uint64_t now_ms)
 
     index = 0u;
     while (index < session_count_) {
-        if (sessions_[index].active()) {
-            sessions_[index].close(0u, now_ms);
+        Session* session;
+
+        session = session_at(index);
+        if (session->active()) {
+            session->close(0u, now_ms);
         }
-        sessions_[index].reset();
+        session->reset();
         ++index;
     }
 
@@ -56,39 +66,46 @@ void SessionServer::close(uint64_t now_ms)
     initialized_ = 0;
     sessions_ = NULL;
     session_count_ = 0u;
+    session_size_ = 0u;
     server_id_ = 0u;
     idle_timeout_ms_ = 0u;
 }
 
-int SessionServer::update(uint64_t now_ms)
+int SessionServer::update(uint64_t now_ms, uint32_t* out_closed_count)
 {
     uint32_t index;
     uint32_t closed_count;
 
+    if (out_closed_count != NULL) {
+        *out_closed_count = 0u;
+    }
     if (!initialized_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
     if (idle_timeout_ms_ == 0u) {
-        return 0;
+        return proto::ERROR_CODE_OK;
     }
 
     closed_count = 0u;
     index = 0u;
     while (index < session_count_) {
-        if (sessions_[index].active()) {
+        Session* session;
+
+        session = session_at(index);
+        if (session->active()) {
             uint64_t last_time;
 
-            last_time = sessions_[index].last_recv_ms();
-            if (sessions_[index].last_send_ms() > last_time) {
-                last_time = sessions_[index].last_send_ms();
+            last_time = session->last_recv_ms();
+            if (session->last_send_ms() > last_time) {
+                last_time = session->last_send_ms();
             }
-            if (sessions_[index].connected_at_ms() > last_time) {
-                last_time = sessions_[index].connected_at_ms();
+            if (session->connected_at_ms() > last_time) {
+                last_time = session->connected_at_ms();
             }
 
             if (now_ms > last_time && now_ms - last_time > idle_timeout_ms_) {
-                sessions_[index].close(0u, now_ms);
-                sessions_[index].reset();
+                session->close(0u, now_ms);
+                session->reset();
                 if (active_count_ > 0u) {
                     --active_count_;
                 }
@@ -98,7 +115,10 @@ int SessionServer::update(uint64_t now_ms)
         ++index;
     }
 
-    return (int)closed_count;
+    if (out_closed_count != NULL) {
+        *out_closed_count = closed_count;
+    }
+    return proto::ERROR_CODE_OK;
 }
 
 Session* SessionServer::open_session(const SessionOpenRequest& request, int* out_status)
@@ -107,23 +127,23 @@ Session* SessionServer::open_session(const SessionOpenRequest& request, int* out
     int status;
 
     if (out_status != NULL) {
-        *out_status = SESSION_STATUS_OK;
+        *out_status = proto::ERROR_CODE_OK;
     }
     if (!initialized_) {
         if (out_status != NULL) {
-            *out_status = SESSION_STATUS_CLOSED;
+            *out_status = proto::ERROR_CODE_SESSION_CLOSED;
         }
         return NULL;
     }
     if (request.link_id == 0u || request.conn_id == 0u) {
         if (out_status != NULL) {
-            *out_status = SESSION_STATUS_INVALID_ARG;
+            *out_status = proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
         }
         return NULL;
     }
     if (find_session(request.link_id) != NULL) {
         if (out_status != NULL) {
-            *out_status = SESSION_STATUS_ALREADY_EXISTS;
+            *out_status = proto::ERROR_CODE_SESSION_ALREADY_EXISTS;
         }
         return NULL;
     }
@@ -131,13 +151,13 @@ Session* SessionServer::open_session(const SessionOpenRequest& request, int* out
     session = find_free_session();
     if (session == NULL) {
         if (out_status != NULL) {
-            *out_status = SESSION_STATUS_NO_SLOT;
+            *out_status = proto::ERROR_CODE_SESSION_NO_SLOT;
         }
         return NULL;
     }
 
     status = session->open(server_id_, request);
-    if (status != SESSION_STATUS_OK) {
+    if (status != proto::ERROR_CODE_OK) {
         if (out_status != NULL) {
             *out_status = status;
         }
@@ -153,12 +173,12 @@ int SessionServer::close_session(uint64_t link_id, uint32_t reason, uint64_t now
     Session* session;
 
     if (!initialized_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
 
     session = find_session(link_id);
     if (session == NULL) {
-        return SESSION_STATUS_NOT_FOUND;
+        return proto::ERROR_CODE_SESSION_NOT_FOUND;
     }
 
     session->close(reason, now_ms);
@@ -166,7 +186,7 @@ int SessionServer::close_session(uint64_t link_id, uint32_t reason, uint64_t now
     if (active_count_ > 0u) {
         --active_count_;
     }
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 int SessionServer::handle_message(
@@ -179,12 +199,12 @@ int SessionServer::handle_message(
     Session* session;
 
     if (!initialized_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
 
     session = find_session(link_id);
     if (session == NULL) {
-        return SESSION_STATUS_NOT_FOUND;
+        return proto::ERROR_CODE_SESSION_NOT_FOUND;
     }
 
     return session->handle_message(message_id, data, size, now_ms);
@@ -200,8 +220,11 @@ Session* SessionServer::find_session(uint64_t link_id)
 
     index = 0u;
     while (index < session_count_) {
-        if (sessions_[index].active() && sessions_[index].link_id() == link_id) {
-            return &sessions_[index];
+        Session* session;
+
+        session = session_at(index);
+        if (session->active() && session->link_id() == link_id) {
+            return session;
         }
         ++index;
     }
@@ -218,8 +241,11 @@ const Session* SessionServer::find_session(uint64_t link_id) const
 
     index = 0u;
     while (index < session_count_) {
-        if (sessions_[index].active() && sessions_[index].link_id() == link_id) {
-            return &sessions_[index];
+        const Session* session;
+
+        session = session_at(index);
+        if (session->active() && session->link_id() == link_id) {
+            return session;
         }
         ++index;
     }
@@ -236,8 +262,11 @@ Session* SessionServer::find_session_by_uid(uint64_t uid)
 
     index = 0u;
     while (index < session_count_) {
-        if (sessions_[index].active() && sessions_[index].uid() == uid) {
-            return &sessions_[index];
+        Session* session;
+
+        session = session_at(index);
+        if (session->active() && session->uid() == uid) {
+            return session;
         }
         ++index;
     }
@@ -254,8 +283,11 @@ const Session* SessionServer::find_session_by_uid(uint64_t uid) const
 
     index = 0u;
     while (index < session_count_) {
-        if (sessions_[index].active() && sessions_[index].uid() == uid) {
-            return &sessions_[index];
+        const Session* session;
+
+        session = session_at(index);
+        if (session->active() && session->uid() == uid) {
+            return session;
         }
         ++index;
     }
@@ -282,6 +314,16 @@ int SessionServer::initialized() const
     return initialized_;
 }
 
+Session* SessionServer::session_at(uint32_t index)
+{
+    return (Session*)((char*)sessions_ + (uint64_t)index * (uint64_t)session_size_);
+}
+
+const Session* SessionServer::session_at(uint32_t index) const
+{
+    return (const Session*)((const char*)sessions_ + (uint64_t)index * (uint64_t)session_size_);
+}
+
 Session* SessionServer::find_free_session()
 {
     uint32_t index;
@@ -292,8 +334,11 @@ Session* SessionServer::find_free_session()
 
     index = 0u;
     while (index < session_count_) {
-        if (!sessions_[index].active()) {
-            return &sessions_[index];
+        Session* session;
+
+        session = session_at(index);
+        if (!session->active()) {
+            return session;
         }
         ++index;
     }

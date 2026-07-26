@@ -1,10 +1,14 @@
 #include "abe_session.h"
 
+#include "protocol.pb.h"
+
 #include <stddef.h>
 
 namespace abe {
 namespace logic {
 namespace session {
+
+namespace proto = ::abe::proto::client;
 
 Session::HandlerEntry::HandlerEntry()
     : message_id(0u),
@@ -22,10 +26,16 @@ Session::Session()
     reset();
 }
 
+Session::~Session()
+{
+}
+
 int Session::open(uint64_t server_id, const SessionOpenRequest& request)
 {
+    int rc;
+
     if (server_id == 0u || request.link_id == 0u || request.conn_id == 0u) {
-        return SESSION_STATUS_INVALID_ARG;
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     reset();
@@ -38,7 +48,13 @@ int Session::open(uint64_t server_id, const SessionOpenRequest& request)
     info_.last_recv_ms = request.now_ms;
     info_.last_send_ms = request.now_ms;
     info_.link_user_data = request.link_user_data;
-    return SESSION_STATUS_OK;
+
+    rc = on_open(request);
+    if (rc != proto::ERROR_CODE_OK) {
+        reset();
+        return rc;
+    }
+    return proto::ERROR_CODE_OK;
 }
 
 void Session::close(uint32_t reason, uint64_t now_ms)
@@ -50,6 +66,7 @@ void Session::close(uint32_t reason, uint64_t now_ms)
     info_.state = SESSION_STATE_CLOSED;
     info_.close_reason = reason;
     info_.last_recv_ms = now_ms;
+    on_close(reason, now_ms);
     active_ = 0;
     handler_count_ = 0u;
     default_handler_ = HandlerEntry();
@@ -75,68 +92,69 @@ void Session::reset()
     default_handler_ = HandlerEntry();
     send_handler_ = NULL;
     send_user_data_ = NULL;
+    on_reset();
 }
 
 int Session::set_uid(uint64_t uid)
 {
     if (!active_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
     if (uid == 0u) {
-        return SESSION_STATUS_INVALID_ARG;
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     info_.uid = uid;
     if (info_.state == SESSION_STATE_CONNECTED) {
         info_.state = SESSION_STATE_AUTHENTICATED;
     }
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 int Session::enter_room(uint64_t room_id)
 {
     if (!active_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
     if (room_id == 0u) {
-        return SESSION_STATUS_INVALID_ARG;
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     info_.room_id = room_id;
     if (info_.state != SESSION_STATE_IN_GAME) {
         info_.state = SESSION_STATE_IN_ROOM;
     }
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 int Session::enter_game()
 {
     if (!active_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
     if (info_.room_id == 0u) {
-        return SESSION_STATUS_INVALID_ARG;
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     info_.state = SESSION_STATE_IN_GAME;
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 int Session::leave_game()
 {
     if (!active_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
     if (info_.state == SESSION_STATE_IN_GAME) {
         info_.state = info_.room_id == 0u ? SESSION_STATE_AUTHENTICATED : SESSION_STATE_IN_ROOM;
     }
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 int Session::leave_room()
 {
     if (!active_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
 
     info_.room_id = 0u;
@@ -145,7 +163,7 @@ int Session::leave_room()
     } else {
         info_.state = SESSION_STATE_CONNECTED;
     }
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 int Session::set_message_handler(
@@ -157,17 +175,17 @@ int Session::set_message_handler(
     HandlerEntry* current;
 
     if (message_id == 0u || handler == NULL) {
-        return SESSION_STATUS_INVALID_ARG;
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     current = find_handler(message_id);
     if (current != NULL) {
         current->handler = handler;
         current->user_data = user_data;
-        return SESSION_STATUS_OK;
+        return proto::ERROR_CODE_OK;
     }
     if (handler_count_ >= SESSION_MAX_MESSAGE_HANDLERS) {
-        return SESSION_STATUS_NO_SLOT;
+        return proto::ERROR_CODE_SESSION_NO_SLOT;
     }
 
     entry.message_id = message_id;
@@ -175,7 +193,7 @@ int Session::set_message_handler(
     entry.user_data = user_data;
     handlers_[handler_count_] = entry;
     ++handler_count_;
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 int Session::clear_message_handler(uint32_t message_id)
@@ -190,12 +208,12 @@ int Session::clear_message_handler(uint32_t message_id)
             }
             --handler_count_;
             handlers_[handler_count_] = HandlerEntry();
-            return SESSION_STATUS_OK;
+            return proto::ERROR_CODE_OK;
         }
         ++index;
     }
 
-    return SESSION_STATUS_NOT_FOUND;
+    return proto::ERROR_CODE_SESSION_NOT_FOUND;
 }
 
 void Session::clear_message_handlers()
@@ -206,12 +224,12 @@ void Session::clear_message_handlers()
 int Session::set_default_message_handler(SessionMessageHandler handler, void* user_data)
 {
     if (handler == NULL) {
-        return SESSION_STATUS_INVALID_ARG;
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     default_handler_.handler = handler;
     default_handler_.user_data = user_data;
-    return SESSION_STATUS_OK;
+    return proto::ERROR_CODE_OK;
 }
 
 void Session::clear_default_message_handler()
@@ -225,10 +243,10 @@ int Session::handle_message(uint32_t message_id, const void* data, uint32_t size
     HandlerEntry* entry;
 
     if (!active_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
     if (message_id == 0u || (data == NULL && size != 0u)) {
-        return SESSION_STATUS_INVALID_ARG;
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     info_.last_recv_ms = now_ms;
@@ -243,7 +261,7 @@ int Session::handle_message(uint32_t message_id, const void* data, uint32_t size
     }
 
     if (entry == NULL || entry->handler == NULL) {
-        return SESSION_STATUS_NO_HANDLER;
+        return proto::ERROR_CODE_SESSION_NO_HANDLER;
     }
     return entry->handler(this, &message, entry->user_data);
 }
@@ -259,17 +277,17 @@ int Session::send(const void* data, uint32_t size, uint64_t now_ms)
     int result;
 
     if (!active_) {
-        return SESSION_STATUS_CLOSED;
+        return proto::ERROR_CODE_SESSION_CLOSED;
     }
     if (data == NULL && size != 0u) {
-        return SESSION_STATUS_INVALID_ARG;
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
     if (send_handler_ == NULL) {
-        return SESSION_STATUS_NO_HANDLER;
+        return proto::ERROR_CODE_SESSION_NO_HANDLER;
     }
 
     result = send_handler_(this, data, size, send_user_data_);
-    if (result == SESSION_STATUS_OK) {
+    if (result == proto::ERROR_CODE_OK) {
         info_.last_send_ms = now_ms;
     }
     return result;
@@ -356,6 +374,22 @@ Session::HandlerEntry* Session::find_handler(uint32_t message_id)
         ++index;
     }
     return NULL;
+}
+
+int Session::on_open(const SessionOpenRequest& request)
+{
+    (void)request;
+    return proto::ERROR_CODE_OK;
+}
+
+void Session::on_close(uint32_t reason, uint64_t now_ms)
+{
+    (void)reason;
+    (void)now_ms;
+}
+
+void Session::on_reset()
+{
 }
 
 } /* namespace session */

@@ -51,6 +51,7 @@ target_link_directories(abe_backend_kafka
 
 target_link_libraries(abe_backend_kafka
     PUBLIC
+        abe_base_error
         abe_base_memory
         ${ABE_RDKAFKA_LIBRARIES}
         ${ABE_RDKAFKA_LIBRARY}

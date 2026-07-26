@@ -14,3 +14,8 @@ target_include_directories(abe_logic_session
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+target_link_libraries(abe_logic_session
+    PUBLIC
+        abe_proto_client
+)

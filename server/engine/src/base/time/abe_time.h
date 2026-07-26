@@ -1,6 +1,8 @@
 #ifndef ABE_TIME_H
 #define ABE_TIME_H
 
+#include "abe_error.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -11,11 +13,11 @@ extern "C" {
 #define ABE_TIME_MAX_TIMEZONE_OFFSET_MINUTES (14 * 60)
 
 typedef enum abe_time_status {
-    ABE_TIME_OK = 0,
-    ABE_TIME_ERROR = -1,
-    ABE_TIME_INVALID_ARG = -2,
-    ABE_TIME_SYSTEM_ERROR = -3,
-    ABE_TIME_OVERFLOW = -4
+    ABE_TIME_OK = ABE_OK,
+    ABE_TIME_ERROR = ABE_ERROR,
+    ABE_TIME_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_TIME_SYSTEM_ERROR = ABE_SYSTEM_ERROR,
+    ABE_TIME_OVERFLOW = ABE_OVERFLOW
 } abe_time_status_t;
 
 enum abe_time_weekday {

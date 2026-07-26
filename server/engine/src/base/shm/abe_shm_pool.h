@@ -1,6 +1,8 @@
 #ifndef ABE_SHM_POOL_H
 #define ABE_SHM_POOL_H
 
+#include "abe_error.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -18,14 +20,14 @@ typedef struct abe_shm_pool abe_shm_pool_t;
 typedef uint64_t abe_shm_offset_t;
 
 typedef enum abe_shm_pool_status {
-    ABE_SHM_POOL_OK = 0,
-    ABE_SHM_POOL_ERROR = -1,
-    ABE_SHM_POOL_INVALID_ARG = -2,
-    ABE_SHM_POOL_NO_MEMORY = -3,
-    ABE_SHM_POOL_OUT_OF_RANGE = -4,
-    ABE_SHM_POOL_DOUBLE_FREE = -5,
-    ABE_SHM_POOL_EXISTS = -6,
-    ABE_SHM_POOL_NOT_FOUND = -7
+    ABE_SHM_POOL_OK = ABE_OK,
+    ABE_SHM_POOL_ERROR = ABE_ERROR,
+    ABE_SHM_POOL_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_SHM_POOL_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_SHM_POOL_OUT_OF_RANGE = ABE_OUT_OF_RANGE,
+    ABE_SHM_POOL_DOUBLE_FREE = ABE_DOUBLE_FREE,
+    ABE_SHM_POOL_EXISTS = ABE_ALREADY_EXISTS,
+    ABE_SHM_POOL_NOT_FOUND = ABE_NOT_FOUND
 } abe_shm_pool_status_t;
 
 typedef struct abe_shm_pool_config {

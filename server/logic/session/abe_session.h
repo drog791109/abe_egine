@@ -7,16 +7,6 @@ namespace abe {
 namespace logic {
 namespace session {
 
-enum SessionStatus {
-    SESSION_STATUS_OK = 0,
-    SESSION_STATUS_INVALID_ARG = -1,
-    SESSION_STATUS_NOT_FOUND = -2,
-    SESSION_STATUS_ALREADY_EXISTS = -3,
-    SESSION_STATUS_NO_SLOT = -4,
-    SESSION_STATUS_NO_HANDLER = -5,
-    SESSION_STATUS_CLOSED = -6
-};
-
 enum SessionState {
     SESSION_STATE_CLOSED = 0,
     SESSION_STATE_CONNECTED = 1,
@@ -73,6 +63,7 @@ typedef int (*SessionSendHandler)(
 class Session {
 public:
     Session();
+    virtual ~Session();
 
     int open(uint64_t server_id, const SessionOpenRequest& request);
     void close(uint32_t reason, uint64_t now_ms);
@@ -111,6 +102,11 @@ public:
     void* link_user_data() const;
 
     void fill_info(SessionInfo* out_info) const;
+
+protected:
+    virtual int on_open(const SessionOpenRequest& request);
+    virtual void on_close(uint32_t reason, uint64_t now_ms);
+    virtual void on_reset();
 
 private:
     struct HandlerEntry {

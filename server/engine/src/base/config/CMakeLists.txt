@@ -1,3 +1,7 @@
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
+pkg_check_modules(XML2 REQUIRED IMPORTED_TARGET libxml-2.0)
+
 add_library(abe_base_config STATIC
     abe_config.c
 )
@@ -16,5 +20,9 @@ target_include_directories(abe_base_config
 
 target_link_libraries(abe_base_config
     PUBLIC
+        abe_base_error
         abe_base_memory
+    PRIVATE
+        PkgConfig::JSONC
+        PkgConfig::XML2
 )

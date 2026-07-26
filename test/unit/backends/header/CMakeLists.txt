@@ -11,6 +11,7 @@ set_target_properties(abe_backend_header_test
 
 target_include_directories(abe_backend_header_test
     PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/base/error
         ${CMAKE_SOURCE_DIR}/src/common/db
         ${CMAKE_SOURCE_DIR}/src/backends/db_mysql
         ${CMAKE_SOURCE_DIR}/src/backends/redis

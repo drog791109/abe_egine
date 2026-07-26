@@ -7,6 +7,33 @@
 项目常驻工程约束见 [AGENTS.md](../AGENTS.md)。其中 `server/engine` 的所有项目公开接口必须能使用
 C 或 C++11 编译，优先使用简洁、显式、便于人工维护的接口，禁止 C++14+ 和复杂高级语法，并尽量不使用 STL。
 
+## 0. 默认运行环境规则
+
+本项目默认在当前仓库自己的 `dev` 容器内构建、测试和运行服务。宿主机只作为源码编辑、Git 操作和
+Docker/Compose 控制层使用。除非某条任务明确要求在宿主机验证，否则下面这些命令都应进入容器后执行：
+
+- `cmake` 配置和构建。
+- 单元测试、集成测试和压测命令。
+- 服务进程启动，例如 gateway、room、match、settlement 等二进制。
+- 依赖探测，例如 `pkg-config`、`libevent`、gRPC、MySQL/Redis/RabbitMQ/Kafka 客户端库检查。
+
+默认流程：
+
+```bash
+deploy/docker/dev.sh start
+deploy/docker/dev.sh enter
+cd /workspace
+```
+
+如果需要从宿主机的一次性命令进入容器执行，使用当前项目的 compose 容器，例如：
+
+```bash
+ABE_REPO_ROOT="$(pwd)" docker compose -f deploy/docker/docker-compose.yml --project-directory deploy/docker exec dev bash
+```
+
+不要把其他项目的容器当成本项目运行环境；确认容器内源码路径应为 `/workspace`，并且 `/workspace`
+对应当前仓库。若无法进入 dev 容器，或只能在宿主机执行验证，必须在结果里明确说明。
+
 ## 1. Docker 安装
 
 推荐在 Ubuntu 22.04/24.04 上使用 Docker 官方 apt 仓库安装 Docker Engine、Buildx
@@ -87,7 +114,7 @@ Docker 开发环境文件位于 `deploy/docker/`：
 
 | 文件 | 用途 |
 | --- | --- |
-| `Dockerfile` | 构建开发容器，安装编译工具、C/C++ 依赖、gRPC、Kafka/RabbitMQ/Redis/MySQL 客户端库，并从源码构建 `libjuice`。 |
+| `Dockerfile` | 构建开发容器，安装编译工具、C/C++ 依赖、JSON-C、libxml2、gRPC、Kafka/RabbitMQ/Redis/MySQL 客户端库，并默认从源码构建 `libjuice`。 |
 | `docker-compose.yml` | 启动 `dev`、`mysql`、`redis`、`rabbitmq`、`zookeeper`、`kafka`。 |
 | `.env.example` | 本地环境变量模板。首次启动前复制为 `.env`。 |
 
@@ -106,7 +133,15 @@ Compose 中依赖服务镜像默认使用可直接访问的镜像前缀，避免
 
 当前 compose 使用 `network_mode: host`。容器和宿主机共享网络命名空间，服务会直接占用宿主机端口，
 因此 `ports` 映射不会生效，也不应该和 `network_mode: host` 同时配置。
-由于 `dev` 服务还把源码目录做了 bind mount，`/workspace` 里的文件权限最终以宿主机文件系统为准。
+`dev` 服务会把源码目录 bind mount 到容器内 `/workspace`。使用 `deploy/docker/dev.sh` 时，
+脚本会自动把 `ABE_REPO_ROOT` 设置为当前仓库根目录；如果直接执行 `docker compose`，或需要强制指定宿主机
+源码路径，可以手动传入：
+
+```bash
+ABE_REPO_ROOT=/home/drog/work/abe_engine docker compose -f deploy/docker/docker-compose.yml --project-directory deploy/docker up -d dev
+```
+
+由于 `/workspace` 来自宿主机 bind mount，容器内文件权限最终以宿主机文件系统为准。
 仓库内普通文本文件默认保持 `0644`，需要执行的脚本再单独设为 `0755`。
 如果要把带源码的容器镜像拷贝到其他机器，使用 `portable` 构建目标；该目标会在镜像内把普通文件归一为
 `0644`、目录归一为 `0755`，已有执行位的脚本仍保留执行权限。
@@ -209,15 +244,40 @@ deploy/docker/dev.sh mirror-aliyun
 该命令会备份 `/etc/docker/daemon.json`，更新 `registry-mirrors`，然后重启 Docker daemon。
 如果当前用户不在 `docker` 组，脚本会提示输入 `sudo` 密码。
 
-## 4. 启动与进入开发容器
+## 4. Shell 脚本生成规则
+
+新增或修改 `*.sh` 文件时，文件开头必须保留 shebang，并紧跟运行示例和命令说明注释：
+
+```bash
+#!/usr/bin/env bash
+#
+# Run example:
+#   ./scripts/example.sh
+# Command description:
+#   Describe what this command does.
+```
+
+运行示例应当使用从仓库根目录执行的真实命令。只能被其他脚本加载的公共脚本也要写示例，但命令应使用
+`source ...`。命令说明必须写清脚本实际做什么，不能只重复脚本文件名。
+
+Shell 脚本保持 LF 行尾；需要直接执行的脚本应保留可执行权限。
+
+脚本目录按职责分层：
+
+- `deploy/docker/` 放 Docker/Compose 环境控制和容器内执行包装脚本。
+- `scripts/` 放当前环境内运行的项目命令，包括编译、测试、服务起服/关服脚本。
+- `scripts/` 下的脚本不负责启动 Docker、创建容器，也不把 `docker exec` 作为主要行为。默认先进入
+  `dev` 容器 `/workspace`，再运行服务脚本。
+
+## 5. 启动与进入开发容器
 
 Docker 目录中提供统一操作脚本，脚本可以从任意目录执行：
 
 | 命令 | 用途 |
 | --- | --- |
-| `deploy/docker/dev.sh start` | 启动环境，等价于 `docker compose up -d`。 |
+| `deploy/docker/dev.sh start` | 构建有变化的镜像并启动环境，等价于 `docker compose up -d --build`。 |
 | `deploy/docker/dev.sh stop` | 停止并移除容器，保留数据卷。 |
-| `deploy/docker/dev.sh restart` | 重启整套环境。 |
+| `deploy/docker/dev.sh restart` | 重启整套环境，并构建有变化的镜像。 |
 | `deploy/docker/dev.sh build` | 构建镜像。 |
 | `deploy/docker/dev.sh rebuild` | 无缓存重新构建镜像并启动环境。 |
 | `deploy/docker/dev.sh status` | 查看服务状态。 |
@@ -229,15 +289,28 @@ Docker 目录中提供统一操作脚本，脚本可以从任意目录执行：
 | `deploy/docker/dev.sh access` | 将当前登录用户永久加入 `docker` 组。 |
 | `deploy/docker/dev.sh mirror-aliyun` | 配置 Docker daemon 使用阿里云镜像加速。 |
 | `deploy/docker/dev.sh mirror-show` | 查看当前 Docker 镜像加速地址。 |
+| `deploy/docker/build.sh` | 在 dev 容器内执行 `scripts/build.sh` 编译代码，默认 build 目录为容器本地 `/tmp/abe_engine_build/engine`。 |
+| `deploy/docker/rebuild.sh` | 在 dev 容器内执行 `scripts/rebuild.sh` 清理并重新编译代码，默认 build 目录为容器本地 `/tmp/abe_engine_build/engine`。 |
+| `scripts/build.sh` | 在当前环境内编译代码。 |
+| `scripts/rebuild.sh` | 在当前环境内清理并重新编译代码。 |
+| `scripts/services_start.sh` | 在当前环境内启动服务，当前支持 `gateway`。 |
+| `scripts/services_stop.sh` | 在当前环境内关闭服务，当前支持 `gateway`。 |
 
-常用命令：
+宿主机常用命令：
 
 ```bash
 deploy/docker/dev.sh start
 deploy/docker/dev.sh status
 deploy/docker/dev.sh enter
-deploy/docker/dev.sh rebuild
 deploy/docker/dev.sh stop
+```
+
+容器 `/workspace` 内常用命令：
+
+```bash
+scripts/build.sh
+scripts/services_start.sh gateway
+scripts/services_stop.sh gateway
 ```
 
 检查 compose 配置：
@@ -254,13 +327,50 @@ deploy/docker/dev.sh rebuild
 deploy/docker/dev.sh status
 ```
 
+编译代码：
+
+```bash
+deploy/docker/build.sh
+deploy/docker/rebuild.sh
+```
+
 进入开发容器：
 
 ```bash
 deploy/docker/dev.sh enter
 ```
 
-源码目录会挂载到容器内 `/workspace`，后续编译和联调命令都可以在该目录下执行。
+源码目录会挂载到容器内 `/workspace`，后续编译、测试、服务启动和依赖检查命令默认都在该目录下执行。
+Docker 包装脚本默认把 CMake build 目录放在容器本地 `/tmp/abe_engine_build/engine`，避免 VMware/HGFS
+共享目录并发写 `.o/.a` 时出现截断文件。若已经在 `/workspace` 内，也可以直接执行纯编译脚本：
+
+```bash
+scripts/build.sh
+scripts/rebuild.sh
+```
+
+纯编译脚本默认 build 目录为 `build/engine`；如需同样使用容器本地目录，可以显式传入：
+
+```bash
+BUILD_DIR=/tmp/abe_engine_build/engine scripts/build.sh
+```
+
+gateway 的可执行文件固定输出到 `bin/abe_gateway`，配置文件固定使用 `bin/gate.json`。build 目录只保存
+CMake 中间产物，不作为服务启动路径。服务运行态文件也放在 `bin` 运行目录下：
+
+| 文件 | 用途 |
+| --- | --- |
+| `bin/run/gateway.pid` | gateway 进程 pid 文件，启停脚本用它判断和停止进程。 |
+| `bin/logs/gateway/stdout.log` | gateway 进程 stdout/stderr 输出。 |
+| `bin/logs/gateway/YYYY-MM-DD/gateway.log` | gateway 默认按天业务日志。 |
+
+服务启停脚本在当前环境执行，只负责启动已经编译好的二进制，不会自动编译代码。默认运行环境是
+`dev` 容器内的 `/workspace`：
+
+```bash
+scripts/services_start.sh gateway
+scripts/services_stop.sh gateway
+```
 
 查看日志：
 
@@ -281,10 +391,18 @@ deploy/docker/dev.sh stop
 deploy/docker/dev.sh clean
 ```
 
-## 5. 常见问题
+## 6. 常见问题
 
 `docker compose up` 提示端口冲突时，先停止宿主机上已有的 MySQL、Redis、RabbitMQ、ZooKeeper 或 Kafka，
 再重新启动 compose。
+
+容器内 CMake 报 `No package 'json-c' found` 时，说明当前运行的 `dev` 容器来自旧镜像，镜像里还没有
+`libjson-c-dev`。Dockerfile 已包含该依赖，重新构建并重建 `dev` 容器即可：
+
+```bash
+deploy/docker/dev.sh rebuild dev
+deploy/docker/build.sh
+```
 
 `dev` 容器里连接依赖失败时，先确认所有服务健康：
 
@@ -296,7 +414,7 @@ docker compose logs --tail=100 mysql redis rabbitmq kafka
 在 Docker Desktop 上使用 host 网络时，需要使用支持 host networking 的版本，并在设置中启用该功能。
 Linux Docker Engine 默认支持 host 网络。
 
-## 6. 参考
+## 7. 参考
 
 - Docker Engine Ubuntu 安装文档：https://docs.docker.com/engine/install/ubuntu/
 - Docker Engine Linux 安装后配置：https://docs.docker.com/engine/install/linux-postinstall/

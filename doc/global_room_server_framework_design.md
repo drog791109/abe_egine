@@ -1243,7 +1243,7 @@ ClientBot -> Gateway -> Room Coordinator -> Room Server -> Gateway -> ClientBot
 
 推荐文件：
 
-- `deploy/docker/Dockerfile`：统一安装编译工具和 C/C++ 依赖，`libjuice` 从源码构建。
+- `deploy/docker/Dockerfile`：统一安装编译工具和 C/C++ 依赖，并默认从源码构建 `libjuice`。
 - `deploy/docker/docker-compose.yml`：启动 `mysql`、`redis`、`rabbitmq`、`zookeeper`、`kafka` 和开发容器。
 - `deploy/docker/.env.example`：保存默认环境变量模板。
 - `.dockerignore`：排除构建产物和本地缓存。
@@ -1369,9 +1369,9 @@ docker compose exec dev bash
 
 | 命令 | 用途 |
 | --- | --- |
-| `dev.sh start` | 启动环境。 |
+| `dev.sh start` | 构建有变化的镜像并启动环境。 |
 | `dev.sh stop` | 停止并移除容器，保留数据卷。 |
-| `dev.sh restart` | 重启整套环境。 |
+| `dev.sh restart` | 重启整套环境，并构建有变化的镜像。 |
 | `dev.sh build` | 构建镜像。 |
 | `dev.sh rebuild` | 无缓存重新构建镜像并启动环境。 |
 | `dev.sh status` | 查看服务状态。 |
@@ -1383,6 +1383,20 @@ docker compose exec dev bash
 | `dev.sh access` | 将当前登录用户永久加入 `docker` 组。 |
 | `dev.sh mirror-aliyun` | 配置 Docker daemon 使用阿里云镜像加速。 |
 | `dev.sh mirror-show` | 查看当前 Docker 镜像加速地址。 |
+| `build.sh` | 在 dev 容器内执行纯代码编译脚本。 |
+| `rebuild.sh` | 在 dev 容器内清理并重新编译代码。 |
+
+`deploy/docker/` 只负责 Docker/Compose 环境和容器包装命令。进入 `dev` 容器后，使用仓库根目录下的
+`scripts/services_start.sh` 和 `scripts/services_stop.sh` 管理业务服务进程。服务启停脚本不编译代码，
+当前支持 `gateway`：
+
+```bash
+scripts/services_start.sh gateway
+scripts/services_stop.sh gateway
+```
+
+gateway 默认运行文件放在项目 `bin` 目录：pid 文件为 `bin/run/gateway.pid`，stdout/stderr 为
+`bin/logs/gateway/stdout.log`，业务日志为 `bin/logs/gateway/YYYY-MM-DD/gateway.log`。
 
 `dev` 容器内源码挂载到 `/workspace`，并预设以下连接配置：
 

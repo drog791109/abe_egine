@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+#
+# Run example:
+#   ./test/unit/base/memory/abe_no_direct_alloc_test.sh "$(pwd)"
+# Command description:
+#   Scan project C/C++ code for direct allocation calls outside memory modules.
+
 set -eu
 
 repo_root="${1:?repo root is required}"

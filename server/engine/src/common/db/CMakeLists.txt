@@ -16,5 +16,6 @@ target_include_directories(abe_common_db
 
 target_link_libraries(abe_common_db
     PUBLIC
+        abe_base_error
         abe_base_memory
 )

@@ -18,5 +18,6 @@ find_package(Threads REQUIRED)
 
 target_link_libraries(abe_base_shm
     PUBLIC
+        abe_base_error
         Threads::Threads
 )

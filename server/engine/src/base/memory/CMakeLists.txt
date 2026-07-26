@@ -14,3 +14,8 @@ target_include_directories(abe_base_memory
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+target_link_libraries(abe_base_memory
+    PUBLIC
+        abe_base_error
+)

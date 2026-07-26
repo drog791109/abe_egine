@@ -52,6 +52,7 @@ target_link_directories(abe_backend_redis
 
 target_link_libraries(abe_backend_redis
     PUBLIC
+        abe_base_error
         abe_base_memory
         ${ABE_HIREDIS_LIBRARIES}
         ${ABE_HIREDIS_LIBRARY}

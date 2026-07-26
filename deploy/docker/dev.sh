@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 #
+# Run example:
+#   ./deploy/docker/dev.sh start
+# Command description:
+#   Build changed images and start the Docker development environment.
+#
 # ABE Engine Docker development helper.
 #
 # Usage:
 #   ./dev.sh <command> [args...]
 #
 # Common commands:
-#   ./dev.sh start                 Start all services in background.
+#   ./dev.sh start                 Build changed images and start all services in background.
 #   ./dev.sh stop                  Stop and remove containers, keep volumes.
-#   ./dev.sh restart               Restart the environment.
+#   ./dev.sh restart               Restart the environment and rebuild changed images.
 #   ./dev.sh build [SERVICE...]    Build compose images.
 #   ./dev.sh rebuild [SERVICE...]  Rebuild without cache and start services.
 #   ./dev.sh status                Show service status.
@@ -27,12 +32,16 @@
 #   IMAGE_NAME=abe-engine-portable:latest
 #   OUTPUT_FILE=/path/to/abe-engine-portable.tar
 #   ALIYUN_MIRROR_URL=<copy the full Aliyun mirror URL from the ACR console>
+#   ABE_REPO_ROOT=/path/to/abe_engine
+#   BUILD_LIBJUICE=1
 #
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+ABE_REPO_ROOT=${ABE_REPO_ROOT:-${REPO_ROOT}}
+export ABE_REPO_ROOT
 
 usage() {
   cat <<'EOF'
@@ -40,9 +49,9 @@ Usage:
   dev.sh <command> [args...]
 
 Commands:
-  start [SERVICE...]        Start services in background.
+  start [SERVICE...]        Build changed images and start services in background.
   stop [ARGS...]            Stop and remove containers, keep volumes.
-  restart [SERVICE...]      Restart the environment.
+  restart [SERVICE...]      Restart the environment, rebuilding changed images.
   build [SERVICE...]        Build compose images.
   rebuild [SERVICE...]      Rebuild without cache and start services.
   status [ARGS...]          Show compose service status.
@@ -61,6 +70,8 @@ Environment:
   IMAGE_NAME                Portable image name. Default: abe-engine-portable:latest
   OUTPUT_FILE               Portable tar path. Default: <repo>/abe-engine-portable.tar
   ALIYUN_MIRROR_URL         Full Aliyun mirror URL copied from the ACR console.
+  ABE_REPO_ROOT             Host source path mounted to /workspace. Default: <repo>
+  BUILD_LIBJUICE            Build libjuice from source in the dev image. Default: 1
 EOF
 }
 
@@ -76,7 +87,7 @@ compose() {
 }
 
 compose_privileged() {
-  run_privileged docker compose -f "${COMPOSE_FILE}" --project-directory "${SCRIPT_DIR}" "$@"
+  run_docker compose -f "${COMPOSE_FILE}" --project-directory "${SCRIPT_DIR}" "$@"
 }
 
 ensure_env() {
@@ -106,11 +117,12 @@ env_file_value() {
 }
 
 build_portable() {
-  local image_name output_file base_image libjuice_ref tz
+  local image_name output_file base_image build_libjuice libjuice_ref tz
 
   image_name=${IMAGE_NAME:-abe-engine-portable:latest}
   output_file=${OUTPUT_FILE:-${REPO_ROOT}/abe-engine-portable.tar}
   base_image=${BASE_IMAGE:-}
+  build_libjuice=${BUILD_LIBJUICE:-}
   libjuice_ref=${LIBJUICE_REF:-}
   tz=${TZ:-UTC}
 
@@ -120,29 +132,46 @@ build_portable() {
   if [ -z "${base_image}" ]; then
     base_image=public.ecr.aws/ubuntu/ubuntu:22.04
   fi
+  if [ -z "${build_libjuice}" ]; then
+    build_libjuice=$(env_file_value BUILD_LIBJUICE || true)
+  fi
+  if [ -z "${build_libjuice}" ]; then
+    build_libjuice=1
+  fi
   if [ -z "${libjuice_ref}" ]; then
     libjuice_ref=$(env_file_value LIBJUICE_REF || true)
   fi
 
-  run_privileged docker build \
+  run_docker build \
     -f "${SCRIPT_DIR}/Dockerfile" \
     --target portable \
     --build-arg BASE_IMAGE="${base_image}" \
     --build-arg TZ="${tz}" \
+    --build-arg BUILD_LIBJUICE="${build_libjuice}" \
     --build-arg LIBJUICE_REF="${libjuice_ref}" \
     -t "${image_name}" \
     "${REPO_ROOT}"
 
-  run_privileged docker save "${image_name}" -o "${output_file}"
+  run_docker save "${image_name}" -o "${output_file}"
   echo "saved ${image_name} to ${output_file}"
+}
+
+run_docker() {
+  if [ "$(id -u)" -eq 0 ] || docker info >/dev/null 2>&1; then
+    docker "$@"
+    return 0
+  fi
+
+  sudo docker "$@"
 }
 
 run_privileged() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
-  else
-    sudo "$@"
+    return 0
   fi
+
+  sudo "$@"
 }
 
 current_login_user() {
@@ -294,12 +323,12 @@ PY
   run_privileged systemctl daemon-reload
   run_privileged systemctl restart docker
   echo "configured Docker registry mirror: ${mirror_url}"
-  run_privileged docker info --format 'registry mirrors: {{json .RegistryConfig.Mirrors}}' || true
+  run_docker info --format 'registry mirrors: {{json .RegistryConfig.Mirrors}}' || true
 }
 
 show_mirrors() {
   require_docker
-  run_privileged docker info --format 'registry mirrors: {{json .RegistryConfig.Mirrors}}'
+  run_docker info --format 'registry mirrors: {{json .RegistryConfig.Mirrors}}'
 }
 
 main() {
@@ -317,7 +346,7 @@ main() {
     start|up)
       require_docker
       ensure_env
-      compose_privileged up -d "$@"
+      compose_privileged up -d --build "$@"
       compose_privileged ps
       ;;
     stop|down)
@@ -328,7 +357,7 @@ main() {
       require_docker
       ensure_env
       compose_privileged down
-      compose_privileged up -d "$@"
+      compose_privileged up -d --build "$@"
       compose_privileged ps
       ;;
     build)

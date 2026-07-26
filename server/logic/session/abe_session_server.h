@@ -13,6 +13,11 @@ struct SessionServerConfig {
     uint64_t server_id;
     Session* sessions;
     uint32_t session_count;
+    /*
+     * Size in bytes of one session slot. Leave as 0 for plain Session slots.
+     * Set to sizeof(DerivedSession) when a service provides derived sessions.
+     */
+    uint32_t session_size;
     uint64_t idle_timeout_ms;
 };
 
@@ -22,7 +27,7 @@ public:
 
     int init(const SessionServerConfig& config);
     void close(uint64_t now_ms);
-    int update(uint64_t now_ms);
+    int update(uint64_t now_ms, uint32_t* out_closed_count);
 
     Session* open_session(const SessionOpenRequest& request, int* out_status);
     int close_session(uint64_t link_id, uint32_t reason, uint64_t now_ms);
@@ -47,10 +52,13 @@ private:
     SessionServer(const SessionServer&);
     SessionServer& operator=(const SessionServer&);
 
+    Session* session_at(uint32_t index);
+    const Session* session_at(uint32_t index) const;
     Session* find_free_session();
 
     Session* sessions_;
     uint32_t session_count_;
+    uint32_t session_size_;
     uint32_t active_count_;
     uint64_t server_id_;
     uint64_t idle_timeout_ms_;

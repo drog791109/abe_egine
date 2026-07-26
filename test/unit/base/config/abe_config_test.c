@@ -17,6 +17,7 @@ static int test_json_text(void)
     const char* text;
     const char* value;
     abe_config_t* config;
+    abe_config_value_type_t type;
     int64_t i64_value;
     double double_value;
     int bool_value;
@@ -25,6 +26,9 @@ static int test_json_text(void)
         "{"
         "\"server\":{\"host\":\"127.0.0.1\",\"port\":7001,\"enabled\":true},"
         "\"rooms\":[{\"name\":\"alpha\"},{\"name\":\"beta\"}],"
+        "\"escaped\":\"line\\nnext\","
+        "\"unicode\":\"\\u0041\","
+        "\"nothing\":null,"
         "\"ratio\":1.25"
         "}";
 
@@ -39,6 +43,14 @@ static int test_json_text(void)
     TEST_REQUIRE(bool_value == 1);
     TEST_REQUIRE(abe_config_get_string(config, "rooms[1].name", &value) == ABE_CONFIG_OK);
     TEST_REQUIRE(strcmp(value, "beta") == 0);
+    TEST_REQUIRE(abe_config_get_string(config, "escaped", &value) == ABE_CONFIG_OK);
+    TEST_REQUIRE(strcmp(value, "line\nnext") == 0);
+    TEST_REQUIRE(abe_config_get_string(config, "unicode", &value) == ABE_CONFIG_OK);
+    TEST_REQUIRE(strcmp(value, "A") == 0);
+    TEST_REQUIRE(abe_config_get_type(config, "nothing", &type) == ABE_CONFIG_OK);
+    TEST_REQUIRE(type == ABE_CONFIG_VALUE_NULL);
+    TEST_REQUIRE(abe_config_get_string(config, "nothing", &value) ==
+        ABE_CONFIG_TYPE_MISMATCH);
     TEST_REQUIRE(abe_config_get_double(config, "ratio", &double_value) == ABE_CONFIG_OK);
     TEST_REQUIRE(double_value > 1.24 && double_value < 1.26);
     TEST_REQUIRE(abe_config_exists(config, "server.host"));
@@ -52,6 +64,7 @@ static int test_xml_text(void)
     const char* text;
     const char* value;
     abe_config_t* config;
+    abe_config_value_type_t type;
     int64_t i64_value;
     int bool_value;
 
@@ -61,6 +74,9 @@ static int test_xml_text(void)
         "<enabled>true</enabled>"
         "<room><name>alpha</name></room>"
         "<room><name>beta</name></room>"
+        "<escaped>Tom &amp; Jerry</escaped>"
+        "<raw><![CDATA[line <tag>]]></raw>"
+        "<empty/>"
         "</server>";
 
     config = NULL;
@@ -74,6 +90,14 @@ static int test_xml_text(void)
     TEST_REQUIRE(bool_value == 1);
     TEST_REQUIRE(abe_config_get_string(config, "server.room[1].name", &value) == ABE_CONFIG_OK);
     TEST_REQUIRE(strcmp(value, "beta") == 0);
+    TEST_REQUIRE(abe_config_get_string(config, "server.escaped", &value) == ABE_CONFIG_OK);
+    TEST_REQUIRE(strcmp(value, "Tom & Jerry") == 0);
+    TEST_REQUIRE(abe_config_get_string(config, "server.raw", &value) == ABE_CONFIG_OK);
+    TEST_REQUIRE(strcmp(value, "line <tag>") == 0);
+    TEST_REQUIRE(abe_config_get_type(config, "server.empty", &type) == ABE_CONFIG_OK);
+    TEST_REQUIRE(type == ABE_CONFIG_VALUE_OBJECT);
+    TEST_REQUIRE(abe_config_get_string(config, "server.empty", &value) ==
+        ABE_CONFIG_TYPE_MISMATCH);
     abe_config_destroy(config);
     return 0;
 }
@@ -100,6 +124,28 @@ static int test_file_load(void)
     return 0;
 }
 
+static int test_json_rejects_invalid_text(void)
+{
+    abe_config_t* config;
+
+    config = NULL;
+    TEST_REQUIRE(abe_config_load_json_text("{\"value\":42} trailing", &config) ==
+        ABE_CONFIG_PARSE_ERROR);
+    TEST_REQUIRE(config == NULL);
+    return 0;
+}
+
+static int test_xml_rejects_invalid_text(void)
+{
+    abe_config_t* config;
+
+    config = NULL;
+    TEST_REQUIRE(abe_config_load_xml_text("<server><value></server>", &config) ==
+        ABE_CONFIG_PARSE_ERROR);
+    TEST_REQUIRE(config == NULL);
+    return 0;
+}
+
 int main(void)
 {
     if (test_json_text() != 0) {
@@ -109,6 +155,12 @@ int main(void)
         return 1;
     }
     if (test_file_load() != 0) {
+        return 1;
+    }
+    if (test_json_rejects_invalid_text() != 0) {
+        return 1;
+    }
+    if (test_xml_rejects_invalid_text() != 0) {
         return 1;
     }
     return 0;

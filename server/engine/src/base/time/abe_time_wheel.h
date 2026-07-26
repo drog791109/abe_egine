@@ -24,12 +24,12 @@ typedef uint64_t abe_timer_id_t;
 #define ABE_TIME_WHEEL_SOURCE_MONO 1u
 
 typedef enum abe_timer_status {
-    ABE_TIMER_OK = 0,
-    ABE_TIMER_ERROR = -1,
-    ABE_TIMER_INVALID_ARG = -2,
-    ABE_TIMER_NO_MEMORY = -3,
-    ABE_TIMER_NOT_FOUND = -4,
-    ABE_TIMER_LIMIT = -5
+    ABE_TIMER_OK = ABE_OK,
+    ABE_TIMER_ERROR = ABE_ERROR,
+    ABE_TIMER_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_TIMER_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_TIMER_NOT_FOUND = ABE_NOT_FOUND,
+    ABE_TIMER_LIMIT = ABE_LIMIT
 } abe_timer_status_t;
 
 typedef void (*abe_timer_cb)(abe_timer_t* timer, uint64_t now_ms, void* user_data);

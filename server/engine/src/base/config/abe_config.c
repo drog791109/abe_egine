@@ -1,6 +1,10 @@
 #include "abe_config.h"
 #include "abe_mem_pool.h"
 
+#include <json-c/json.h>
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -28,11 +32,6 @@ struct abe_config {
     abe_config_format_t format;
     char* text;
     abe_config_node_t* root;
-};
-
-struct abe_config_parser {
-    abe_config_t* config;
-    const char* cur;
 };
 
 static uint64_t abe_config_strlen_u64(const char* text)
@@ -113,13 +112,6 @@ static void abe_config_add_child(abe_config_node_t* parent, abe_config_node_t* c
     }
 }
 
-static void abe_config_skip_ws(struct abe_config_parser* parser)
-{
-    while (parser->cur[0] != '\0' && isspace((unsigned char)parser->cur[0])) {
-        ++parser->cur;
-    }
-}
-
 static int abe_config_create_empty(
     abe_config_format_t format,
     uint64_t source_size,
@@ -177,390 +169,180 @@ static char* abe_config_copy_source(abe_config_t* config, const char* text)
     return copy;
 }
 
-static char* abe_config_parse_json_string(struct abe_config_parser* parser)
-{
-    const char* start;
-    char* out;
-    char* dst;
-    uint64_t max_size;
-
-    if (parser->cur[0] != '"') {
-        return NULL;
-    }
-    ++parser->cur;
-    start = parser->cur;
-    while (parser->cur[0] != '\0' && parser->cur[0] != '"') {
-        if (parser->cur[0] == '\\' && parser->cur[1] != '\0') {
-            parser->cur += 2;
-        } else {
-            ++parser->cur;
-        }
-    }
-    if (parser->cur[0] != '"') {
-        return NULL;
-    }
-
-    max_size = (uint64_t)(parser->cur - start);
-    out = (char*)abe_config_alloc(parser->config, max_size + 1u);
-    if (out == NULL) {
-        return NULL;
-    }
-
-    dst = out;
-    parser->cur = start;
-    while (parser->cur[0] != '\0' && parser->cur[0] != '"') {
-        if (parser->cur[0] == '\\') {
-            ++parser->cur;
-            switch (parser->cur[0]) {
-            case '"':
-            case '\\':
-            case '/':
-                *dst = parser->cur[0];
-                break;
-            case 'b':
-                *dst = '\b';
-                break;
-            case 'f':
-                *dst = '\f';
-                break;
-            case 'n':
-                *dst = '\n';
-                break;
-            case 'r':
-                *dst = '\r';
-                break;
-            case 't':
-                *dst = '\t';
-                break;
-            case 'u':
-                *dst = '?';
-                parser->cur += 4;
-                break;
-            default:
-                *dst = parser->cur[0];
-                break;
-            }
-            ++dst;
-            if (parser->cur[0] != '\0') {
-                ++parser->cur;
-            }
-        } else {
-            *dst = parser->cur[0];
-            ++dst;
-            ++parser->cur;
-        }
-    }
-    *dst = '\0';
-    if (parser->cur[0] == '"') {
-        ++parser->cur;
-    }
-    return out;
-}
-
-static int abe_config_parse_json_value(
-    struct abe_config_parser* parser,
+static int abe_config_import_json_value(
+    abe_config_t* config,
     const char* key,
-    abe_config_node_t** out_node);
-
-static int abe_config_parse_json_object(
-    struct abe_config_parser* parser,
-    const char* key,
-    abe_config_node_t** out_node)
-{
-    abe_config_node_t* object_node;
-
-    if (parser->cur[0] != '{') {
-        return ABE_CONFIG_PARSE_ERROR;
-    }
-    ++parser->cur;
-
-    object_node = abe_config_node_create(parser->config, key, ABE_CONFIG_VALUE_OBJECT);
-    if (object_node == NULL) {
-        return ABE_CONFIG_NO_MEMORY;
-    }
-
-    abe_config_skip_ws(parser);
-    if (parser->cur[0] == '}') {
-        ++parser->cur;
-        *out_node = object_node;
-        return ABE_CONFIG_OK;
-    }
-
-    for (;;) {
-        char* child_key;
-        abe_config_node_t* child;
-        int rc;
-
-        abe_config_skip_ws(parser);
-        child_key = abe_config_parse_json_string(parser);
-        if (child_key == NULL) {
-            return ABE_CONFIG_PARSE_ERROR;
-        }
-        abe_config_skip_ws(parser);
-        if (parser->cur[0] != ':') {
-            return ABE_CONFIG_PARSE_ERROR;
-        }
-        ++parser->cur;
-        rc = abe_config_parse_json_value(parser, child_key, &child);
-        if (rc != ABE_CONFIG_OK) {
-            return rc;
-        }
-        abe_config_add_child(object_node, child);
-        abe_config_skip_ws(parser);
-        if (parser->cur[0] == '}') {
-            ++parser->cur;
-            *out_node = object_node;
-            return ABE_CONFIG_OK;
-        }
-        if (parser->cur[0] != ',') {
-            return ABE_CONFIG_PARSE_ERROR;
-        }
-        ++parser->cur;
-    }
-}
-
-static int abe_config_parse_json_array(
-    struct abe_config_parser* parser,
-    const char* key,
-    abe_config_node_t** out_node)
-{
-    abe_config_node_t* array_node;
-
-    if (parser->cur[0] != '[') {
-        return ABE_CONFIG_PARSE_ERROR;
-    }
-    ++parser->cur;
-
-    array_node = abe_config_node_create(parser->config, key, ABE_CONFIG_VALUE_ARRAY);
-    if (array_node == NULL) {
-        return ABE_CONFIG_NO_MEMORY;
-    }
-
-    abe_config_skip_ws(parser);
-    if (parser->cur[0] == ']') {
-        ++parser->cur;
-        *out_node = array_node;
-        return ABE_CONFIG_OK;
-    }
-
-    for (;;) {
-        abe_config_node_t* child;
-        int rc;
-
-        rc = abe_config_parse_json_value(parser, NULL, &child);
-        if (rc != ABE_CONFIG_OK) {
-            return rc;
-        }
-        abe_config_add_child(array_node, child);
-        abe_config_skip_ws(parser);
-        if (parser->cur[0] == ']') {
-            ++parser->cur;
-            *out_node = array_node;
-            return ABE_CONFIG_OK;
-        }
-        if (parser->cur[0] != ',') {
-            return ABE_CONFIG_PARSE_ERROR;
-        }
-        ++parser->cur;
-    }
-}
-
-static int abe_config_parse_json_number(
-    struct abe_config_parser* parser,
-    const char* key,
-    abe_config_node_t** out_node)
-{
-    const char* begin;
-    abe_config_node_t* node;
-
-    begin = parser->cur;
-    if (parser->cur[0] == '-') {
-        ++parser->cur;
-    }
-    while (isdigit((unsigned char)parser->cur[0])) {
-        ++parser->cur;
-    }
-    if (parser->cur[0] == '.') {
-        ++parser->cur;
-        while (isdigit((unsigned char)parser->cur[0])) {
-            ++parser->cur;
-        }
-    }
-    if (parser->cur[0] == 'e' || parser->cur[0] == 'E') {
-        ++parser->cur;
-        if (parser->cur[0] == '+' || parser->cur[0] == '-') {
-            ++parser->cur;
-        }
-        while (isdigit((unsigned char)parser->cur[0])) {
-            ++parser->cur;
-        }
-    }
-    if (begin == parser->cur) {
-        return ABE_CONFIG_PARSE_ERROR;
-    }
-
-    node = abe_config_node_create(parser->config, key, ABE_CONFIG_VALUE_NUMBER);
-    if (node == NULL) {
-        return ABE_CONFIG_NO_MEMORY;
-    }
-    node->value = abe_config_copy_range(parser->config, begin, parser->cur);
-    if (node->value == NULL) {
-        return ABE_CONFIG_NO_MEMORY;
-    }
-    *out_node = node;
-    return ABE_CONFIG_OK;
-}
-
-static int abe_config_parse_json_literal(
-    struct abe_config_parser* parser,
-    const char* key,
-    const char* literal,
-    abe_config_value_type_t type,
-    const char* value,
+    struct json_object* value,
     abe_config_node_t** out_node)
 {
     abe_config_node_t* node;
-    uint64_t size;
+    enum json_type type;
 
-    size = abe_config_strlen_u64(literal);
-    if (strncmp(parser->cur, literal, (size_t)size) != 0) {
-        return ABE_CONFIG_PARSE_ERROR;
+    if (config == NULL || out_node == NULL) {
+        return ABE_CONFIG_INVALID_ARG;
     }
-    parser->cur += size;
-    node = abe_config_node_create(parser->config, key, type);
-    if (node == NULL) {
-        return ABE_CONFIG_NO_MEMORY;
-    }
-    if (value != NULL) {
-        node->value = abe_config_copy_cstr(parser->config, value);
-        if (node->value == NULL) {
-            return ABE_CONFIG_NO_MEMORY;
-        }
-    }
-    *out_node = node;
-    return ABE_CONFIG_OK;
-}
+    *out_node = NULL;
 
-static int abe_config_parse_json_value(
-    struct abe_config_parser* parser,
-    const char* key,
-    abe_config_node_t** out_node)
-{
-    abe_config_node_t* node;
-
-    abe_config_skip_ws(parser);
-    switch (parser->cur[0]) {
-    case '{':
-        return abe_config_parse_json_object(parser, key, out_node);
-    case '[':
-        return abe_config_parse_json_array(parser, key, out_node);
-    case '"':
-        node = abe_config_node_create(parser->config, key, ABE_CONFIG_VALUE_STRING);
+    if (value == NULL) {
+        node = abe_config_node_create(config, key, ABE_CONFIG_VALUE_NULL);
         if (node == NULL) {
             return ABE_CONFIG_NO_MEMORY;
         }
-        node->value = abe_config_parse_json_string(parser);
-        if (node->value == NULL) {
-            return ABE_CONFIG_PARSE_ERROR;
+        *out_node = node;
+        return ABE_CONFIG_OK;
+    }
+
+    type = json_object_get_type(value);
+    switch (type) {
+    case json_type_object:
+        node = abe_config_node_create(config, key, ABE_CONFIG_VALUE_OBJECT);
+        if (node == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        json_object_object_foreach(value, child_key, child_value) {
+            abe_config_node_t* child;
+            int rc;
+
+            rc = abe_config_import_json_value(config, child_key, child_value, &child);
+            if (rc != ABE_CONFIG_OK) {
+                return rc;
+            }
+            abe_config_add_child(node, child);
         }
         *out_node = node;
         return ABE_CONFIG_OK;
-    case 't':
-        return abe_config_parse_json_literal(parser, key, "true", ABE_CONFIG_VALUE_BOOL, "true", out_node);
-    case 'f':
-        return abe_config_parse_json_literal(parser, key, "false", ABE_CONFIG_VALUE_BOOL, "false", out_node);
-    case 'n':
-        return abe_config_parse_json_literal(parser, key, "null", ABE_CONFIG_VALUE_NULL, NULL, out_node);
+
+    case json_type_array:
+        node = abe_config_node_create(config, key, ABE_CONFIG_VALUE_ARRAY);
+        if (node == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        {
+            size_t index;
+            size_t count;
+
+            count = json_object_array_length(value);
+            index = 0u;
+            while (index < count) {
+                abe_config_node_t* child;
+                int rc;
+
+                rc = abe_config_import_json_value(
+                    config,
+                    NULL,
+                    json_object_array_get_idx(value, index),
+                    &child);
+                if (rc != ABE_CONFIG_OK) {
+                    return rc;
+                }
+                abe_config_add_child(node, child);
+                ++index;
+            }
+        }
+        *out_node = node;
+        return ABE_CONFIG_OK;
+
+    case json_type_string:
+        node = abe_config_node_create(config, key, ABE_CONFIG_VALUE_STRING);
+        if (node == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        node->value = abe_config_copy_cstr(config, json_object_get_string(value));
+        if (node->value == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        *out_node = node;
+        return ABE_CONFIG_OK;
+
+    case json_type_int:
+    case json_type_double:
+        node = abe_config_node_create(config, key, ABE_CONFIG_VALUE_NUMBER);
+        if (node == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        node->value = abe_config_copy_cstr(config, json_object_get_string(value));
+        if (node->value == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        *out_node = node;
+        return ABE_CONFIG_OK;
+
+    case json_type_boolean:
+        node = abe_config_node_create(config, key, ABE_CONFIG_VALUE_BOOL);
+        if (node == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        node->value = abe_config_copy_cstr(
+            config,
+            json_object_get_boolean(value) ? "true" : "false");
+        if (node->value == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        *out_node = node;
+        return ABE_CONFIG_OK;
+
+    case json_type_null:
     default:
-        return abe_config_parse_json_number(parser, key, out_node);
+        node = abe_config_node_create(config, key, ABE_CONFIG_VALUE_NULL);
+        if (node == NULL) {
+            return ABE_CONFIG_NO_MEMORY;
+        }
+        *out_node = node;
+        return ABE_CONFIG_OK;
     }
 }
 
 static int abe_config_parse_json(abe_config_t* config)
 {
-    struct abe_config_parser parser;
+    struct json_tokener* tokener;
+    struct json_object* root;
+    enum json_tokener_error error;
+    size_t parse_end;
+    uint64_t source_size;
     int rc;
 
-    memset(&parser, 0, sizeof(parser));
-    parser.config = config;
-    parser.cur = config->text;
-    rc = abe_config_parse_json_value(&parser, NULL, &config->root);
-    if (rc != ABE_CONFIG_OK) {
-        return rc;
+    if (config == NULL || config->text == NULL) {
+        return ABE_CONFIG_INVALID_ARG;
     }
-    abe_config_skip_ws(&parser);
-    return parser.cur[0] == '\0' ? ABE_CONFIG_OK : ABE_CONFIG_PARSE_ERROR;
-}
 
-static int abe_config_is_name_char(int ch)
-{
-    return isalnum((unsigned char)ch) || ch == '_' || ch == '-' || ch == '.';
-}
+    source_size = abe_config_strlen_u64(config->text);
+    if (source_size > (uint64_t)INT_MAX) {
+        return ABE_CONFIG_INVALID_ARG;
+    }
 
-static int abe_config_skip_xml_misc(struct abe_config_parser* parser)
-{
-    int progressed;
+    tokener = json_tokener_new();
+    if (tokener == NULL) {
+        return ABE_CONFIG_NO_MEMORY;
+    }
 
-    do {
-        progressed = 0;
-        abe_config_skip_ws(parser);
-        if (strncmp(parser->cur, "<?", 2u) == 0) {
-            const char* end;
+    root = json_tokener_parse_ex(tokener, config->text, (int)source_size);
+    error = json_tokener_get_error(tokener);
+    parse_end = json_tokener_get_parse_end(tokener);
+    json_tokener_free(tokener);
 
-            end = strstr(parser->cur, "?>");
-            if (end == NULL) {
-                return ABE_CONFIG_PARSE_ERROR;
-            }
-            parser->cur = end + 2;
-            progressed = 1;
-        } else if (strncmp(parser->cur, "<!--", 4u) == 0) {
-            const char* end;
-
-            end = strstr(parser->cur, "-->");
-            if (end == NULL) {
-                return ABE_CONFIG_PARSE_ERROR;
-            }
-            parser->cur = end + 3;
-            progressed = 1;
+    if (error != json_tokener_success) {
+        if (root != NULL) {
+            json_object_put(root);
         }
-    } while (progressed);
-
-    return ABE_CONFIG_OK;
-}
-
-static char* abe_config_parse_xml_name(struct abe_config_parser* parser)
-{
-    const char* begin;
-
-    begin = parser->cur;
-    while (abe_config_is_name_char((unsigned char)parser->cur[0])) {
-        ++parser->cur;
+        return ABE_CONFIG_PARSE_ERROR;
     }
-    if (begin == parser->cur) {
-        return NULL;
-    }
-    return abe_config_copy_range(parser->config, begin, parser->cur);
-}
 
-static char* abe_config_parse_xml_quoted(struct abe_config_parser* parser)
-{
-    char quote;
-    const char* begin;
+    while (parse_end < (size_t)source_size &&
+        isspace((unsigned char)config->text[parse_end])) {
+        ++parse_end;
+    }
+    if (parse_end != (size_t)source_size) {
+        if (root != NULL) {
+            json_object_put(root);
+        }
+        return ABE_CONFIG_PARSE_ERROR;
+    }
 
-    if (parser->cur[0] != '"' && parser->cur[0] != '\'') {
-        return NULL;
+    rc = abe_config_import_json_value(config, NULL, root, &config->root);
+    if (root != NULL) {
+        json_object_put(root);
     }
-    quote = parser->cur[0];
-    ++parser->cur;
-    begin = parser->cur;
-    while (parser->cur[0] != '\0' && parser->cur[0] != quote) {
-        ++parser->cur;
-    }
-    if (parser->cur[0] != quote) {
-        return NULL;
-    }
-    ++parser->cur;
-    return abe_config_copy_range(parser->config, begin, parser->cur - 1);
+    return rc;
 }
 
 static char* abe_config_make_xml_attr_key(abe_config_t* config, const char* name)
@@ -592,142 +374,156 @@ static char* abe_config_copy_trimmed(abe_config_t* config, const char* begin, co
     return abe_config_copy_range(config, begin, end);
 }
 
-static int abe_config_parse_xml_element(
-    struct abe_config_parser* parser,
+static int abe_config_xml_has_element_child(xmlNodePtr xml_node)
+{
+    xmlNodePtr child;
+
+    child = xml_node == NULL ? NULL : xml_node->children;
+    while (child != NULL) {
+        if (child->type == XML_ELEMENT_NODE) {
+            return 1;
+        }
+        child = child->next;
+    }
+    return 0;
+}
+
+static int abe_config_import_xml_attr(
+    abe_config_t* config,
+    xmlDocPtr doc,
+    xmlAttrPtr attr,
     abe_config_node_t* parent)
 {
-    abe_config_node_t* element;
-    char* element_name;
+    xmlChar* value;
+    char* attr_key;
+    abe_config_node_t* attr_node;
 
-    if (parser->cur[0] != '<' || parser->cur[1] == '/') {
-        return ABE_CONFIG_PARSE_ERROR;
-    }
-    ++parser->cur;
-    element_name = abe_config_parse_xml_name(parser);
-    if (element_name == NULL) {
-        return ABE_CONFIG_PARSE_ERROR;
+    if (config == NULL || doc == NULL || attr == NULL || parent == NULL || attr->name == NULL) {
+        return ABE_CONFIG_INVALID_ARG;
     }
 
-    element = abe_config_node_create(parser->config, element_name, ABE_CONFIG_VALUE_OBJECT);
-    if (element == NULL) {
+    attr_key = abe_config_make_xml_attr_key(config, (const char*)attr->name);
+    if (attr_key == NULL) {
         return ABE_CONFIG_NO_MEMORY;
     }
-    abe_config_add_child(parent, element);
-
-    for (;;) {
-        abe_config_skip_ws(parser);
-        if (parser->cur[0] == '/' && parser->cur[1] == '>') {
-            parser->cur += 2;
-            return ABE_CONFIG_OK;
-        }
-        if (parser->cur[0] == '>') {
-            ++parser->cur;
-            break;
-        }
-        if (parser->cur[0] == '\0') {
-            return ABE_CONFIG_PARSE_ERROR;
-        }
-        {
-            char* attr_name;
-            char* attr_key;
-            char* attr_value;
-            abe_config_node_t* attr_node;
-
-            attr_name = abe_config_parse_xml_name(parser);
-            if (attr_name == NULL) {
-                return ABE_CONFIG_PARSE_ERROR;
-            }
-            abe_config_skip_ws(parser);
-            if (parser->cur[0] != '=') {
-                return ABE_CONFIG_PARSE_ERROR;
-            }
-            ++parser->cur;
-            abe_config_skip_ws(parser);
-            attr_value = abe_config_parse_xml_quoted(parser);
-            if (attr_value == NULL) {
-                return ABE_CONFIG_PARSE_ERROR;
-            }
-            attr_key = abe_config_make_xml_attr_key(parser->config, attr_name);
-            if (attr_key == NULL) {
-                return ABE_CONFIG_NO_MEMORY;
-            }
-            attr_node = abe_config_node_create(parser->config, attr_key, ABE_CONFIG_VALUE_STRING);
-            if (attr_node == NULL) {
-                return ABE_CONFIG_NO_MEMORY;
-            }
-            attr_node->value = attr_value;
-            abe_config_add_child(element, attr_node);
-        }
+    attr_node = abe_config_node_create(config, attr_key, ABE_CONFIG_VALUE_STRING);
+    if (attr_node == NULL) {
+        return ABE_CONFIG_NO_MEMORY;
     }
 
-    for (;;) {
+    value = xmlNodeListGetString(doc, attr->children, 1);
+    attr_node->value = abe_config_copy_cstr(config, value == NULL ? "" : (const char*)value);
+    if (value != NULL) {
+        xmlFree(value);
+    }
+    if (attr_node->value == NULL) {
+        return ABE_CONFIG_NO_MEMORY;
+    }
+
+    abe_config_add_child(parent, attr_node);
+    return ABE_CONFIG_OK;
+}
+
+static int abe_config_import_xml_element(
+    abe_config_t* config,
+    xmlDocPtr doc,
+    xmlNodePtr xml_node,
+    abe_config_node_t* parent)
+{
+    abe_config_node_t* node;
+    xmlAttrPtr attr;
+    xmlNodePtr child;
+    int has_element_child;
+
+    if (config == NULL || doc == NULL || xml_node == NULL || parent == NULL ||
+        xml_node->name == NULL) {
+        return ABE_CONFIG_INVALID_ARG;
+    }
+
+    node = abe_config_node_create(config, (const char*)xml_node->name, ABE_CONFIG_VALUE_OBJECT);
+    if (node == NULL) {
+        return ABE_CONFIG_NO_MEMORY;
+    }
+    abe_config_add_child(parent, node);
+
+    attr = xml_node->properties;
+    while (attr != NULL) {
         int rc;
 
-        rc = abe_config_skip_xml_misc(parser);
+        rc = abe_config_import_xml_attr(config, doc, attr, node);
         if (rc != ABE_CONFIG_OK) {
             return rc;
         }
-        if (parser->cur[0] == '<' && parser->cur[1] == '/') {
-            char* close_name;
+        attr = attr->next;
+    }
 
-            parser->cur += 2;
-            close_name = abe_config_parse_xml_name(parser);
-            if (close_name == NULL || strcmp(close_name, element_name) != 0) {
-                return ABE_CONFIG_PARSE_ERROR;
-            }
-            abe_config_skip_ws(parser);
-            if (parser->cur[0] != '>') {
-                return ABE_CONFIG_PARSE_ERROR;
-            }
-            ++parser->cur;
-            return ABE_CONFIG_OK;
+    has_element_child = abe_config_xml_has_element_child(xml_node);
+    if (!has_element_child) {
+        xmlChar* content;
+
+        content = xmlNodeGetContent(xml_node);
+        if (content != NULL) {
+            node->value = abe_config_copy_trimmed(
+                config,
+                (const char*)content,
+                (const char*)content + strlen((const char*)content));
+            xmlFree(content);
         }
-        if (parser->cur[0] == '<') {
-            rc = abe_config_parse_xml_element(parser, element);
+    }
+
+    child = xml_node->children;
+    while (child != NULL) {
+        if (child->type == XML_ELEMENT_NODE) {
+            int rc;
+
+            rc = abe_config_import_xml_element(config, doc, child, node);
             if (rc != ABE_CONFIG_OK) {
                 return rc;
             }
-        } else if (parser->cur[0] != '\0') {
-            const char* begin;
-
-            begin = parser->cur;
-            while (parser->cur[0] != '\0' && parser->cur[0] != '<') {
-                ++parser->cur;
-            }
-            element->value = abe_config_copy_trimmed(parser->config, begin, parser->cur);
-        } else {
-            return ABE_CONFIG_PARSE_ERROR;
         }
+        child = child->next;
     }
+    return ABE_CONFIG_OK;
 }
 
 static int abe_config_parse_xml(abe_config_t* config)
 {
-    struct abe_config_parser parser;
+    xmlDocPtr doc;
+    xmlNodePtr root;
+    uint64_t source_size;
     int rc;
+
+    if (config == NULL || config->text == NULL) {
+        return ABE_CONFIG_INVALID_ARG;
+    }
+    source_size = abe_config_strlen_u64(config->text);
+    if (source_size > (uint64_t)INT_MAX) {
+        return ABE_CONFIG_INVALID_ARG;
+    }
 
     config->root = abe_config_node_create(config, NULL, ABE_CONFIG_VALUE_OBJECT);
     if (config->root == NULL) {
         return ABE_CONFIG_NO_MEMORY;
     }
 
-    memset(&parser, 0, sizeof(parser));
-    parser.config = config;
-    parser.cur = config->text;
-    rc = abe_config_skip_xml_misc(&parser);
-    if (rc != ABE_CONFIG_OK) {
-        return rc;
+    doc = xmlReadMemory(
+        config->text,
+        (int)source_size,
+        "abe_config.xml",
+        NULL,
+        XML_PARSE_NONET | XML_PARSE_NOERROR | XML_PARSE_NOWARNING);
+    if (doc == NULL) {
+        return ABE_CONFIG_PARSE_ERROR;
     }
-    while (parser.cur[0] != '\0') {
-        rc = abe_config_parse_xml_element(&parser, config->root);
-        if (rc != ABE_CONFIG_OK) {
-            return rc;
-        }
-        rc = abe_config_skip_xml_misc(&parser);
-        if (rc != ABE_CONFIG_OK) {
-            return rc;
-        }
+
+    root = xmlDocGetRootElement(doc);
+    if (root == NULL) {
+        xmlFreeDoc(doc);
+        return ABE_CONFIG_PARSE_ERROR;
     }
+
+    rc = abe_config_import_xml_element(config, doc, root, config->root);
+    xmlFreeDoc(doc);
     return ABE_CONFIG_OK;
 }
 

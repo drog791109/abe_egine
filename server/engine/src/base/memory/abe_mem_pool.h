@@ -1,6 +1,8 @@
 #ifndef ABE_MEM_POOL_H
 #define ABE_MEM_POOL_H
 
+#include "abe_error.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -10,12 +12,12 @@ extern "C" {
 typedef struct abe_mem_pool abe_mem_pool_t;
 
 typedef enum abe_mem_pool_status {
-    ABE_MEM_POOL_OK = 0,
-    ABE_MEM_POOL_ERROR = -1,
-    ABE_MEM_POOL_INVALID_ARG = -2,
-    ABE_MEM_POOL_NO_MEMORY = -3,
-    ABE_MEM_POOL_OUT_OF_RANGE = -4,
-    ABE_MEM_POOL_DOUBLE_FREE = -5
+    ABE_MEM_POOL_OK = ABE_OK,
+    ABE_MEM_POOL_ERROR = ABE_ERROR,
+    ABE_MEM_POOL_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_MEM_POOL_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_MEM_POOL_OUT_OF_RANGE = ABE_OUT_OF_RANGE,
+    ABE_MEM_POOL_DOUBLE_FREE = ABE_DOUBLE_FREE
 } abe_mem_pool_status_t;
 
 typedef struct abe_mem_pool_config {

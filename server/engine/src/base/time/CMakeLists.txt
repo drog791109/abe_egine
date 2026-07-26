@@ -19,6 +19,7 @@ find_package(Threads REQUIRED)
 
 target_link_libraries(abe_base_time
     PUBLIC
+        abe_base_error
         abe_base_memory
         Threads::Threads
 )

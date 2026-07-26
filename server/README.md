@@ -16,7 +16,7 @@ server/
   engine/
     src/
       base/       基础设施，C API 优先，公开头保持 C ABI 和 C++03 兼容
-      common/     稳定的共享 C 接口与跨服务基础能力，例如错误码、ID、RPC、服务发现、DB 抽象
+      common/     稳定的共享 C 接口与跨服务基础能力，例如 ID、RPC、服务发现、DB 抽象
       log/        原生 C++ 日志封装，提供简洁的 C++11 接口和日志宏
       backends/   common/base 接口的具体实现，隔离 MySQL C API 等原始第三方接口
       adapters/   将 base/common 的 C 接口适配为不高于 C++11 的简单 RAII 和类接口
@@ -52,8 +52,16 @@ server/
 - 只有当 `base/common` 的 C 接口确实需要原生 C++ 实现时，才允许在 `backends` 中增加范围最小的 C ABI 桥接。
 - `logic` 可以依赖 `base`、`common`、`log` 和 `adapters`，但不得直接依赖具体 `backends` 或包含第三方后端头文件。
 - `services` 负责进程入口、配置加载、后端选择、依赖装配和服务生命周期，不承载复杂玩法逻辑。
+- `services/common` 放各服务进程都会复用的启动组件，例如 `ServiceRuntime`、命令行参数解析、配置/日志/DB 初始化和停止信号处理；不放具体服务业务规则。
 - `services/gateway` 负责把 `engine/adapters/net`、`logic/session` 和协议解码串起来；协议号和消息定义仍然以 `share/proto/client/protocol.proto` 为准。
 - `share/proto/client` 放客户端协议，`share/proto/internal` 放服务间协议。
+
+## 错误码分层
+
+- 基础设施错误码统一放在 `engine/src/base/error/abe_error.h`，例如 `ABE_NOT_FOUND`、`ABE_PARSE_ERROR`、`ABE_CONNECT_FAILED`。
+- base/common/backends 模块可以保留自己的前缀状态名，例如 `ABE_CONFIG_NOT_FOUND`、`ABE_DB_QUERY_FAILED`，但这些值应当别名到 `abe_status_t`，不再维护各自独立的负数区间。
+- 客户端可见和业务逻辑错误放在 `share/proto/client/protocol.proto` 的 `ErrorCode`；服务层负责把底层 `abe_status_t` 转成合适的业务错误，不把基础设施错误号直接暴露给客户端。
+- `logic/services` 需要引用业务错误码时依赖 `abe_proto_client` 生成的 `protocol.pb.h`；本地状态名只能作为 `ErrorCode` 的兼容别名，不能再定义独立错误号。
 
 数据库模块的目标结构示例：
 
@@ -106,38 +114,119 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - `server/share/proto` 保持在 engine 外部，避免游戏协议定义被误认为引擎基础设施的一部分。
 - gateway 之类的 service 只消费 `server/share/proto` 的协议定义，不在 service 代码里重复定义协议号和消息结构。
 
+## Service Runtime 约定
+
+`server/services/common` 提供轻量的 `ServiceRuntime` 进程骨架。公共 runtime 负责：
+
+- 调用每个服务模块的默认配置初始化。
+- 合并公共参数和服务自己的参数表，并统一解析命令行。
+- 加载可选 JSON 配置文件，命令行参数最终覆盖配置文件。
+- 初始化日志。
+- 按需初始化 MySQL 数据库连接和 Redis 连接，并通过 runtime context 交给具体服务。
+- 创建并持有网络 `Loop`。
+- 安装停止信号处理。
+- 按主循环顺序执行 `Loop::update()` 和服务 `update()`。
+- 关闭服务，再销毁网络 `Loop`、Redis、DB、配置和日志。
+
+每个具体服务保留自己的 server 对象，并继承公共 `Service` 接口。入口里只创建 server，然后调用
+`run(argc, argv, server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionServer、RPC 客户端、缓存连接等。
+
 ## Gateway 服务
 
 `server/services/gateway` 提供 gateway 进程的基础骨架：
 
 - `abe_gateway` 是可启动进程，默认监听 `0.0.0.0:7000`。
-- `abe_gateway_main.cpp` 只保留参数解析和进程入口，运行对象放在 `GatewayApp`。
-- `GatewayApp` 封装 gateway 进程生命周期，持有 loop、tcp server、service、link 槽位和逻辑 session 槽位。
+- gateway 可执行文件固定输出到 `bin/abe_gateway`，配置文件固定使用 `bin/gate.json`。
+- `abe_gateway_main.cpp` 只创建 `GatewayServer`，然后调用公共 `run()`。
+- `GatewayServer` 是普通 server 对象，封装 gateway 模块生命周期，持有 tcp server、SessionServer、link 槽位和 gateway session 槽位。
+- `GatewayServer` 默认配置文件是 `bin/gate.json`，也可以通过 `--config <path>` 覆盖。
+- 网络 `Loop` 由 `ServiceRuntime` 创建和驱动，`GatewayServer` 只在初始化时把监听 server 挂到该 loop。
 - 进程采用单主循环事件驱动模型，不创建业务线程；需要扩容时优先多开进程实例。
-- `GatewayService` 把 `TcpServer` 回调接到 gateway session 和逻辑 `SessionServer`。
-- `GatewaySession` 是每条客户端 link 的 gateway 侧会话对象，负责把该 link 的消息转给对应逻辑 session handler。
+- `GatewayServer` 把 `TcpServer` 回调接到 `GatewaySession` 和逻辑 `SessionServer`。
+- `GatewaySession` 继承 `logic/session::Session`，是每条客户端 link 的会话对象。
 - TCP 外层仍使用 `engine/base/net` 的 4 字节大端长度头。
 - TCP payload 是固定 `MsgHeader` 加变长 `Body`。`MsgHeader` 的二进制编解码在 `engine/src/common/protocol`。
 - `MsgHeader.msg_id` 是消息 ID，`Body` 是 `share/proto/client/protocol.proto` 中定义的 `PB_<消息ID枚举名>` protobuf 消息。
-- gateway 先解固定头得到 `msg_id` 和 body，再按 `msg_id` 分发到 session handler；需要具体 protobuf 对象时，通过 gateway 的消息映射接口把 `msg_id` 自动转换为对应 `PB_` 消息类型。
+- gateway 只解固定头得到 `msg_id` 和 body，再转给 session handler；具体 protobuf 对象由业务 session 自己解析。
 
-构建和启动示例：
+构建和运行脚本：
 
 ```bash
-cmake -S server/engine -B build/engine
-cmake --build build/engine --target abe_gateway
-./build/engine/services/gateway/abe_gateway --host 0.0.0.0 --port 7000
+# 在项目根目录执行。Docker 包装脚本默认进入 deploy/docker 的 dev 容器。
+deploy/docker/build.sh          # 在 dev 容器内编译 abe_gateway
+deploy/docker/rebuild.sh        # 在 dev 容器内清理默认 build 目录后重新编译 abe_gateway
+
+# 如果已经在容器 /workspace 内执行，使用当前环境脚本编译和起停服务。
+scripts/build.sh
+scripts/rebuild.sh
+scripts/services_start.sh gateway
+scripts/services_stop.sh gateway
 ```
 
-常用参数：
+Docker 包装脚本默认 build 目录为容器本地 `/tmp/abe_engine_build/engine`，避免共享目录并发写构建产物时出现
+截断文件；纯编译脚本 `scripts/build.sh` 和 `scripts/rebuild.sh` 默认 build 目录为 `build/engine`。
+gateway 可执行文件固定输出到 `bin/abe_gateway`，配置文件默认为 `bin/gate.json`。可以用 `BUILD_DIR`
+覆盖 build 目录，用 `GATEWAY_CONFIG` 覆盖 gateway 配置文件。
+服务启停脚本只负责启动已经编译好的二进制，不会自动编译代码。默认把 gateway pid 写到
+`bin/run/gateway.pid`，stdout/stderr 写到 `bin/logs/gateway/stdout.log`。
+
+gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。命令行只保留公共 runtime 参数，
+用于切换配置文件或临时覆盖日志、数据库、Redis 等公共运行环境。
+
+公共命令行参数：
 
 ```text
---host <ip>              监听地址，默认 0.0.0.0
---port <port>            监听端口，默认 7000
---max-clients <count>    客户端连接槽位，最大 1024
---server-id <id>         gateway 服务实例 id
---idle-ms <ms>           session 空闲超时，0 表示不启用
---tick-ms <ms>           主循环 sleep 毫秒数
+--config <path>          JSON 配置文件，gateway 默认 bin/gate.json
+--tick-ms <ms>           主循环 sleep 毫秒数，默认 10
+--log-output <mode>      console/file/daily，默认 console；gateway 配置默认为 daily
+--log-file <path>        log-output=file 时的日志文件
+--log-dir <path>         log-output=daily 时的日志根目录，默认 logs；gateway 配置默认为 bin/logs/gateway
+--log-level <level>      trace/debug/info/warn/error/critical/off，默认 info
+--mysql-enable <0|1>     启动时是否连接 MySQL，默认 0
+--mysql-host <host>      MySQL 地址，默认 127.0.0.1
+--mysql-port <port>      MySQL 端口，默认 3306
+--mysql-database <name>  MySQL 数据库名，默认服务名
+--mysql-user <user>      MySQL 用户
+--mysql-password <pwd>   MySQL 密码
+--redis-enable <0|1>     启动时是否连接 Redis，默认 0
+--redis-host <host>      Redis 地址，默认 127.0.0.1
+--redis-port <port>      Redis 端口，默认 6379
+--redis-password <pwd>   Redis 密码，默认空
+--redis-database <index> Redis database，默认 0
+--redis-connect-timeout-ms <ms> Redis 连接超时，默认 1000
+--redis-command-timeout-ms <ms> Redis 命令超时，默认 1000
+```
+
+对应 JSON 配置键：
+
+```text
+runtime.tick_ms
+log.output
+log.file
+log.dir
+log.level
+log.utc_offset_minutes
+mysql.enable
+mysql.host
+mysql.port
+mysql.database
+mysql.user
+mysql.password
+redis.enable
+redis.host
+redis.port
+redis.password
+redis.database
+redis.connect_timeout_ms
+redis.command_timeout_ms
+redis.memory_pool_capacity
+gateway.host
+gateway.port
+gateway.max_clients
+gateway.backlog
+gateway.max_packet_size
+gateway.server_id
+gateway.idle_ms
 ```
 
 ## 日志约定
@@ -147,6 +236,8 @@ cmake --build build/engine --target abe_gateway
 ```text
 <root_directory>/YYYY-MM-DD/<logger_name>.log
 ```
+
+gateway 默认配置写到 `bin/logs/gateway/YYYY-MM-DD/gateway.log`。
 
 例如东八区日志：
 

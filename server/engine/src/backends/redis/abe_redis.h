@@ -1,6 +1,8 @@
 #ifndef ABE_REDIS_H
 #define ABE_REDIS_H
 
+#include "abe_error.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -13,13 +15,13 @@ typedef struct abe_redis abe_redis_t;
 typedef struct abe_redis_reply abe_redis_reply_t;
 
 typedef enum abe_redis_status {
-    ABE_REDIS_OK = 0,
-    ABE_REDIS_ERROR = -1,
-    ABE_REDIS_INVALID_ARG = -2,
-    ABE_REDIS_NO_MEMORY = -3,
-    ABE_REDIS_CONNECT_FAILED = -4,
-    ABE_REDIS_COMMAND_FAILED = -5,
-    ABE_REDIS_OUT_OF_RANGE = -6
+    ABE_REDIS_OK = ABE_OK,
+    ABE_REDIS_ERROR = ABE_ERROR,
+    ABE_REDIS_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_REDIS_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_REDIS_CONNECT_FAILED = ABE_CONNECT_FAILED,
+    ABE_REDIS_COMMAND_FAILED = ABE_COMMAND_FAILED,
+    ABE_REDIS_OUT_OF_RANGE = ABE_OUT_OF_RANGE
 } abe_redis_status_t;
 
 typedef enum abe_redis_reply_type {

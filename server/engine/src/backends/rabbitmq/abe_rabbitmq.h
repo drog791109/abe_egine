@@ -1,6 +1,8 @@
 #ifndef ABE_RABBITMQ_H
 #define ABE_RABBITMQ_H
 
+#include "abe_error.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -11,14 +13,14 @@ typedef struct abe_rabbitmq abe_rabbitmq_t;
 typedef struct abe_rabbitmq_message abe_rabbitmq_message_t;
 
 typedef enum abe_rabbitmq_status {
-    ABE_RABBITMQ_OK = 0,
+    ABE_RABBITMQ_OK = ABE_OK,
     ABE_RABBITMQ_NO_MESSAGE = 1,
-    ABE_RABBITMQ_ERROR = -1,
-    ABE_RABBITMQ_INVALID_ARG = -2,
-    ABE_RABBITMQ_NO_MEMORY = -3,
-    ABE_RABBITMQ_CONNECT_FAILED = -4,
-    ABE_RABBITMQ_PROTOCOL_ERROR = -5,
-    ABE_RABBITMQ_SEND_FAILED = -6
+    ABE_RABBITMQ_ERROR = ABE_ERROR,
+    ABE_RABBITMQ_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_RABBITMQ_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_RABBITMQ_CONNECT_FAILED = ABE_CONNECT_FAILED,
+    ABE_RABBITMQ_PROTOCOL_ERROR = ABE_PARSE_ERROR,
+    ABE_RABBITMQ_SEND_FAILED = ABE_SEND_FAILED
 } abe_rabbitmq_status_t;
 
 typedef struct abe_rabbitmq_config {

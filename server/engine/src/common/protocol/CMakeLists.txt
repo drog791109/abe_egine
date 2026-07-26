@@ -6,3 +6,8 @@ target_include_directories(abe_common_protocol
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+target_link_libraries(abe_common_protocol
+    PUBLIC
+        abe_base_error
+)

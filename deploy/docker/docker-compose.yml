@@ -1,7 +1,7 @@
 services:
   dev:
     build:
-      context: ../..
+      context: ${ABE_REPO_ROOT:-../..}
       dockerfile: deploy/docker/Dockerfile
       target: dev
       args:
@@ -12,10 +12,15 @@ services:
         http_proxy: ${HTTP_PROXY:-}
         https_proxy: ${HTTPS_PROXY:-}
         no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}
+        BUILD_LIBJUICE: ${BUILD_LIBJUICE:-1}
+        LIBJUICE_REF: ${LIBJUICE_REF:-}
     image: abe-engine-dev:latest
     working_dir: /workspace
+    init: true
     volumes:
-      - ../..:/workspace
+      - type: bind
+        source: ${ABE_REPO_ROOT:-../..}
+        target: /workspace
     network_mode: host
     environment:
       HTTP_PROXY: ${HTTP_PROXY:-}

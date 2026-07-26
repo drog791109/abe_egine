@@ -1,61 +1,32 @@
 #include "abe_gateway_session.h"
 
+#include "protocol.pb.h"
+
 #include <stdint.h>
 
 namespace abe {
 namespace service {
 namespace gateway {
 
+namespace proto = ::abe::proto::client;
+
 GatewaySession::GatewaySession()
     : link_(NULL),
-      logic_session_(NULL),
       link_id_(0u)
 {
 }
 
-int GatewaySession::open(
-    abe::adapter::net::TcpLink* link,
-    abe::logic::session::Session* logic_session)
-{
-    if (link == NULL || logic_session == NULL) {
-        return abe::logic::session::SESSION_STATUS_INVALID_ARG;
-    }
-
-    link_ = link;
-    logic_session_ = logic_session;
-    link_id_ = current_link_id();
-    logic_session_->set_send_handler(GatewaySession::on_send, this);
-    return abe::logic::session::SESSION_STATUS_OK;
-}
-
 void GatewaySession::close()
 {
-    link_ = NULL;
-    logic_session_ = NULL;
-    link_id_ = 0u;
-}
-
-int GatewaySession::handle_message(
-    uint32_t msg_id,
-    const void* data,
-    uint32_t size,
-    uint64_t now_ms)
-{
-    if (!active()) {
-        return abe::logic::session::SESSION_STATUS_NOT_FOUND;
-    }
-    return logic_session_->handle_message(msg_id, data, size, now_ms);
+    reset();
 }
 
 int GatewaySession::active() const
 {
-    if (link_ == NULL || logic_session_ == NULL || link_id_ == 0u) {
+    if (!abe::logic::session::Session::active() || link_ == NULL || link_id_ == 0u) {
         return 0;
     }
-    if (!logic_session_->active()) {
-        return 0;
-    }
-    if (logic_session_->link_id() != link_id_) {
+    if (abe::logic::session::Session::link_id() != link_id_) {
         return 0;
     }
     return 1;
@@ -71,9 +42,31 @@ abe::adapter::net::TcpLink* GatewaySession::link() const
     return link_;
 }
 
-abe::logic::session::Session* GatewaySession::logic_session() const
+int GatewaySession::on_open(const abe::logic::session::SessionOpenRequest& request)
 {
-    return logic_session_;
+    abe::adapter::net::TcpLink* link;
+
+    link = (abe::adapter::net::TcpLink*)request.link_user_data;
+    if (link == NULL || request.link_id != (uint64_t)(uintptr_t)link) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    link_ = link;
+    link_id_ = request.link_id;
+    set_send_handler(GatewaySession::on_send, this);
+    return proto::ERROR_CODE_OK;
+}
+
+void GatewaySession::on_close(uint32_t reason, uint64_t now_ms)
+{
+    (void)reason;
+    (void)now_ms;
+    clear_gateway_state();
+}
+
+void GatewaySession::on_reset()
+{
+    clear_gateway_state();
 }
 
 int GatewaySession::on_send(
@@ -85,16 +78,20 @@ int GatewaySession::on_send(
     GatewaySession* gateway_session;
 
     gateway_session = (GatewaySession*)user_data;
-    if (session == NULL || gateway_session == NULL || gateway_session->link_ == NULL) {
-        return abe::logic::session::SESSION_STATUS_INVALID_ARG;
+    if (session == NULL || gateway_session == NULL ||
+        session != (abe::logic::session::Session*)gateway_session ||
+        !gateway_session->active() ||
+        gateway_session->link_ == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
     return gateway_session->link_->send(data, size);
 }
 
-uint64_t GatewaySession::current_link_id() const
+void GatewaySession::clear_gateway_state()
 {
-    return (uint64_t)(uintptr_t)link_;
+    link_ = NULL;
+    link_id_ = 0u;
 }
 
 } /* namespace gateway */

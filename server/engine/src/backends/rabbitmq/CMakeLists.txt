@@ -51,6 +51,7 @@ target_link_directories(abe_backend_rabbitmq
 
 target_link_libraries(abe_backend_rabbitmq
     PUBLIC
+        abe_base_error
         abe_base_memory
         ${ABE_RABBITMQ_C_LIBRARIES}
         ${ABE_RABBITMQ_C_LIBRARY}

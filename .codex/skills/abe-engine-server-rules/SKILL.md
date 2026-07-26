@@ -125,6 +125,24 @@ When touching build files:
 - Compile C++ adapters independently from the C contracts they wrap.
 - Keep generated protocol code and third-party dependency requirements from leaking into base public APIs.
 
+## Shell Script Rules
+
+When generating or modifying `*.sh` files:
+
+- Put Docker/Compose environment control scripts and container-aware wrappers
+  under `deploy/docker`.
+- Keep `scripts/` for project commands that run in the current environment,
+  including code build/test helpers and service start/stop scripts.
+- Scripts under `scripts/` should not start Docker, create containers, or call
+  `docker exec` as their primary behavior. The default service runtime is the
+  dev container `/workspace`; enter that container first, then run service
+  scripts there.
+- Keep a shebang on the first line.
+- Immediately after the shebang, add a short comment block containing both `Run example:` and `Command description:`.
+- The run example must show a realistic command from the repository root. For sourced helper scripts, use a `source ...` example.
+- The command description must explain what the command does in concrete terms.
+- Keep shell scripts with LF line endings. Scripts intended to be executed directly should keep executable permission.
+
 ## Review Checklist
 
 Before finishing code or docs work, check:
@@ -145,3 +163,4 @@ Before finishing code or docs work, check:
 - Did the logging wrapper stay simple and hide spdlog/STL types?
 - Did database access stay behind the C database interface?
 - Did logic-layer code remain free to use C++11+ without forcing that standard onto base infrastructure?
+- Did every generated or modified `*.sh` file include a top-of-file run example and command description?

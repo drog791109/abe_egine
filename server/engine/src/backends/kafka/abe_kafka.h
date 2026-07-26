@@ -1,6 +1,8 @@
 #ifndef ABE_KAFKA_H
 #define ABE_KAFKA_H
 
+#include "abe_error.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -14,14 +16,14 @@ typedef struct abe_kafka_consumer abe_kafka_consumer_t;
 typedef struct abe_kafka_message abe_kafka_message_t;
 
 typedef enum abe_kafka_status {
-    ABE_KAFKA_OK = 0,
+    ABE_KAFKA_OK = ABE_OK,
     ABE_KAFKA_NO_MESSAGE = 1,
-    ABE_KAFKA_ERROR = -1,
-    ABE_KAFKA_INVALID_ARG = -2,
-    ABE_KAFKA_NO_MEMORY = -3,
-    ABE_KAFKA_CONFIG_ERROR = -4,
-    ABE_KAFKA_CONNECT_FAILED = -5,
-    ABE_KAFKA_SEND_FAILED = -6
+    ABE_KAFKA_ERROR = ABE_ERROR,
+    ABE_KAFKA_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_KAFKA_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_KAFKA_CONFIG_ERROR = ABE_BAD_VALUE,
+    ABE_KAFKA_CONNECT_FAILED = ABE_CONNECT_FAILED,
+    ABE_KAFKA_SEND_FAILED = ABE_SEND_FAILED
 } abe_kafka_status_t;
 
 typedef struct abe_kafka_config_entry {

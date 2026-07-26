@@ -3,7 +3,6 @@ FROM ${BASE_IMAGE} AS base
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=UTC
-ARG LIBJUICE_REF=
 
 ENV TZ=${TZ}
 ENV LANG=C.UTF-8
@@ -25,6 +24,8 @@ RUN ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
        libfmt-dev \
        libgrpc++-dev \
        libhiredis-dev \
+       libjson-c-dev \
+       libxml2-dev \
        libprotobuf-dev \
        librabbitmq-dev \
        librdkafka-dev \
@@ -42,19 +43,35 @@ RUN ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
        libtool \
     && rm -rf /var/lib/apt/lists/*
 
-RUN if [ -n "${LIBJUICE_REF}" ]; then \
-       git clone --depth 1 --branch "${LIBJUICE_REF}" https://github.com/paullouisageneau/libjuice.git /tmp/libjuice; \
+ARG BUILD_LIBJUICE=1
+ARG LIBJUICE_REF=
+
+RUN if [ "${BUILD_LIBJUICE}" = "1" ]; then \
+      attempt=1; \
+      while [ "${attempt}" -le 3 ]; do \
+        rm -rf /tmp/libjuice; \
+        if [ -n "${LIBJUICE_REF}" ]; then \
+          git -c http.version=HTTP/1.1 clone --depth 1 --branch "${LIBJUICE_REF}" https://github.com/paullouisageneau/libjuice.git /tmp/libjuice; \
+        else \
+          git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/paullouisageneau/libjuice.git /tmp/libjuice; \
+        fi \
+        && break; \
+        attempt=$((attempt + 1)); \
+        echo "retry libjuice clone: ${attempt}/3"; \
+        sleep 5; \
+      done; \
+      test -f /tmp/libjuice/CMakeLists.txt \
+      && cmake -S /tmp/libjuice -B /tmp/libjuice/build -G Ninja \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DBUILD_SHARED_LIBS=ON \
+         -DCMAKE_INSTALL_PREFIX=/usr/local \
+      && cmake --build /tmp/libjuice/build \
+      && cmake --install /tmp/libjuice/build \
+      && rm -rf /tmp/libjuice \
+      && ldconfig; \
     else \
-       git clone --depth 1 https://github.com/paullouisageneau/libjuice.git /tmp/libjuice; \
-    fi \
-    && cmake -S /tmp/libjuice -B /tmp/libjuice/build -G Ninja \
-       -DCMAKE_BUILD_TYPE=Release \
-       -DBUILD_SHARED_LIBS=ON \
-       -DCMAKE_INSTALL_PREFIX=/usr/local \
-    && cmake --build /tmp/libjuice/build \
-    && cmake --install /tmp/libjuice/build \
-    && rm -rf /tmp/libjuice \
-    && ldconfig
+      echo "skip libjuice build; set BUILD_LIBJUICE=0 requested"; \
+    fi
 
 WORKDIR /workspace
 

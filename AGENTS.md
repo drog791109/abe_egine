@@ -5,6 +5,21 @@ modified file, and read
 `.codex/skills/abe-engine-server-rules/SKILL.md` before changing server engine
 code, build files, tests, or architecture documentation.
 
+## Default Runtime Environment
+
+- Run project builds, tests, service binaries, and dependency checks inside this
+  repository's `dev` container by default.
+- Use the host only for editing files, Git operations, and Docker/Compose
+  control unless a task explicitly asks for host-side validation.
+- Inside the dev container, the current repository must be mounted at
+  `/workspace`; do not use another project's container as this project's
+  runtime environment.
+- The compose `dev` service must use `ABE_REPO_ROOT` as the host source path
+  for the `/workspace` bind mount. Project scripts should set it to the current
+  repository root before calling `docker compose`.
+- If container execution is unavailable and a command must run on the host,
+  state that explicitly in the result.
+
 ## Engine Interface Compatibility
 
 - Every project-owned public interface under `server/engine` must compile as C
@@ -59,3 +74,24 @@ code, build files, tests, or architecture documentation.
   testable.
 - When changing engine interfaces, verify C and/or C++11 header compatibility
   as appropriate and keep third-party headers out of public contracts.
+
+## Shell Script Rules
+
+- Docker/Compose environment control scripts and container-aware wrappers belong
+  under `deploy/docker`.
+- `scripts/` is for project commands that run in the current environment,
+  including code build/test helpers and service start/stop scripts.
+- Scripts under `scripts/` should not start Docker, create containers, or call
+  `docker exec` as their primary behavior. The default service runtime is the
+  dev container `/workspace`; enter that container first, then run service
+  scripts there.
+- Every generated or modified `*.sh` file must start with a shebang and then a
+  short comment block that includes both `Run example:` and
+  `Command description:`.
+- The run example must show a realistic command from the repository root. If
+  the file is meant to be sourced rather than executed, show a `source ...`
+  example.
+- The command description must explain what the command does, not just repeat
+  the file name.
+- Keep shell scripts with LF line endings. Scripts intended to be executed
+  directly should keep executable permission.

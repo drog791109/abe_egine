@@ -1,6 +1,8 @@
 #ifndef ABE_NET_H
 #define ABE_NET_H
 
+#include "abe_error.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -28,12 +30,12 @@ typedef struct abe_net_tcp_conn abe_net_tcp_conn_t;
 typedef struct abe_net_udp_endpoint abe_net_udp_endpoint_t;
 
 typedef enum abe_net_status {
-    ABE_NET_OK = 0,
-    ABE_NET_ERROR = -1,
-    ABE_NET_INVALID_ARG = -2,
-    ABE_NET_NO_MEMORY = -3,
-    ABE_NET_PACKET_TOO_LARGE = -4,
-    ABE_NET_WOULD_BLOCK = -5
+    ABE_NET_OK = ABE_OK,
+    ABE_NET_ERROR = ABE_ERROR,
+    ABE_NET_INVALID_ARG = ABE_INVALID_ARG,
+    ABE_NET_NO_MEMORY = ABE_NO_MEMORY,
+    ABE_NET_PACKET_TOO_LARGE = ABE_PACKET_TOO_LARGE,
+    ABE_NET_WOULD_BLOCK = ABE_WOULD_BLOCK
 } abe_net_status_t;
 
 typedef enum abe_net_tcp_event {

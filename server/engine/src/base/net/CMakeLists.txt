@@ -29,6 +29,7 @@ target_link_directories(abe_base_net
 
 target_link_libraries(abe_base_net
     PUBLIC
+        abe_base_error
         abe_base_memory
         ${LIBEVENT_LIBRARIES}
 )
