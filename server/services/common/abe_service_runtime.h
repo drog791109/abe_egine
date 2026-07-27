@@ -1,0 +1,142 @@
+#ifndef ABE_SERVICE_RUNTIME_H
+#define ABE_SERVICE_RUNTIME_H
+
+#include "abe_config.h"
+#include "abe_db.h"
+#include "abe_net_link.h"
+#include "abe_service_args.h"
+
+#include <stdint.h>
+
+typedef struct abe_db_mysql_async abe_db_mysql_async_t;
+typedef struct abe_redis_async abe_redis_async_t;
+typedef struct abe_snowflake abe_snowflake_t;
+
+namespace abe {
+namespace service {
+namespace common {
+
+enum {
+    SERVICE_RUNTIME_MAX_OPTIONS = 64u
+};
+
+enum ServiceStatus {
+    SERVICE_STATUS_OK = 0,
+    SERVICE_STATUS_INVALID_ARG = -1,
+    SERVICE_STATUS_NO_SLOT = -2,
+    SERVICE_STATUS_DUPLICATE = -3,
+    SERVICE_STATUS_FAILED = -4
+};
+
+struct RuntimeConfig {
+    const char* config_path;
+    uint32_t tick_ms;
+
+    const char* log_output;
+    const char* log_file;
+    const char* log_dir;
+    const char* log_level;
+    int32_t log_utc_offset_minutes;
+
+    uint32_t mysql_enable;
+    const char* mysql_host;
+    uint32_t mysql_port;
+    const char* mysql_database;
+    const char* mysql_user;
+    const char* mysql_password;
+    uint32_t mysql_worker_count;
+    uint32_t mysql_queue_capacity;
+
+    uint32_t redis_enable;
+    const char* redis_host;
+    uint32_t redis_port;
+    const char* redis_password;
+    int32_t redis_database;
+    uint32_t redis_connect_timeout_ms;
+    uint32_t redis_command_timeout_ms;
+    uint64_t redis_memory_pool_capacity;
+
+    uint32_t id_node_id;
+};
+
+struct Context {
+    abe::adapter::net::Loop* loop;
+    const abe_config_t* config;
+    abe_db_mysql_async_t* mysql;
+    abe_redis_async_t* redis;
+    abe_snowflake_t* id_generator;
+    const RuntimeConfig* runtime;
+};
+
+class Options {
+public:
+    Options(ServiceOption* options, uint32_t max_options);
+
+    int add_string(
+        const char* name,
+        const char* value_name,
+        const char* description,
+        const char** out_value);
+    int add_u32(
+        const char* name,
+        const char* value_name,
+        const char* description,
+        uint32_t min_value,
+        uint32_t max_value,
+        uint32_t* out_value);
+    int add_u64(
+        const char* name,
+        const char* value_name,
+        const char* description,
+        uint64_t min_value,
+        uint64_t max_value,
+        uint64_t* out_value);
+    int add_i32(
+        const char* name,
+        const char* value_name,
+        const char* description,
+        int32_t min_value,
+        int32_t max_value,
+        int32_t* out_value);
+
+    const ServiceOption* data() const;
+    uint32_t count() const;
+
+private:
+    Options(const Options&);
+    Options& operator=(const Options&);
+
+    int add(const ServiceOption& option);
+    int exists(const char* name) const;
+
+    ServiceOption* options_;
+    uint32_t max_;
+    uint32_t count_;
+};
+
+class Service {
+public:
+    virtual ~Service();
+
+    virtual const char* name() const = 0;
+    virtual const char* config_path() const;
+    virtual void defaults();
+    virtual int options(Options& options);
+    virtual int load_config(const abe_config_t* config);
+    virtual int init(Context& context) = 0;
+    virtual int update(uint64_t now_ms);
+    virtual void close(uint64_t now_ms);
+};
+
+int run(int argc, char** argv, Service& service);
+
+void reset_stop();
+void request_stop();
+int stop_requested();
+void install_stop_signal_handlers();
+
+} /* namespace common */
+} /* namespace service */
+} /* namespace abe */
+
+#endif /* ABE_SERVICE_RUNTIME_H */

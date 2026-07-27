@@ -1,8 +1,10 @@
 #include "abe_db_mysql.h"
+#include "abe_db_mysql_async.h"
 #include "abe_error.h"
 #include "abe_kafka.h"
 #include "abe_rabbitmq.h"
 #include "abe_redis.h"
+#include "abe_redis_async.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -10,14 +12,18 @@
 int main(void)
 {
     abe_db_mysql_config_t mysql_config;
+    abe_db_mysql_async_config_t mysql_async_config;
     abe_redis_config_t redis_config;
     abe_kafka_producer_config_t kafka_producer_config;
     abe_kafka_consumer_config_t kafka_consumer_config;
     abe_rabbitmq_config_t rabbitmq_config;
 
     (void)sizeof(abe_db_t*);
+    (void)sizeof(abe_db_mysql_async_t*);
+    (void)sizeof(abe_db_mysql_async_result_t*);
     (void)sizeof(abe_redis_t*);
     (void)sizeof(abe_redis_reply_t*);
+    (void)sizeof(abe_redis_async_t*);
     (void)sizeof(abe_kafka_producer_t*);
     (void)sizeof(abe_kafka_consumer_t*);
     (void)sizeof(abe_kafka_message_t*);
@@ -47,6 +53,10 @@ int main(void)
     mysql_config.memory_pool_capacity = 0u;
     mysql_config.client_flags = 0ul;
     mysql_config.reconnect = 0;
+
+    mysql_async_config.mysql = mysql_config;
+    mysql_async_config.worker_count = 1u;
+    mysql_async_config.queue_capacity = 1u;
 
     redis_config.host = NULL;
     redis_config.port = 0u;

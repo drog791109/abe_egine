@@ -76,7 +76,7 @@ engine/src/adapters/db_cpp/    基于 abe_db_t 的 C++11 及以下简单 RAII/�
 
 ```text
 engine/src/backends/db_mysql/  基于 MySQL C API 的数据库实现
-engine/src/backends/redis/     基于 hiredis 的 Redis 同步命令接口
+engine/src/backends/redis/     基于 hiredis 的 Redis 同步和非阻塞命令接口
 engine/src/backends/kafka/     基于 librdkafka 的 Kafka producer/consumer 接口
 engine/src/backends/rabbitmq/  基于 rabbitmq-c 的 RabbitMQ publish/consume 接口
 ```
@@ -122,14 +122,41 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - 合并公共参数和服务自己的参数表，并统一解析命令行。
 - 加载可选 JSON 配置文件，命令行参数最终覆盖配置文件。
 - 初始化日志。
-- 按需初始化 MySQL 数据库连接和 Redis 连接，并通过 runtime context 交给具体服务。
+- 按需初始化 MySQL 工作线程连接池和 Redis 非阻塞连接，并通过 runtime context 交给具体服务。
+- 创建雪花 ID 生成器，并通过 runtime context 交给具体服务。
 - 创建并持有网络 `Loop`。
 - 安装停止信号处理。
-- 按主循环顺序执行 `Loop::update()` 和服务 `update()`。
-- 关闭服务，再销毁网络 `Loop`、Redis、DB、配置和日志。
+- 按主循环顺序执行 `Loop::update()`、MySQL/Redis 异步回调和服务 `update()`。
+- 关闭服务，再销毁网络 `Loop`、Redis、MySQL 工作线程、雪花 ID、配置和日志。
 
 每个具体服务保留自己的 server 对象，并继承公共 `Service` 接口。入口里只创建 server，然后调用
 `run(argc, argv, server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionServer、RPC 客户端、缓存连接等。
+
+## 玩家数据存储
+
+玩家持久化数据按“固定查询列 + protobuf blob”落库：
+
+- `server/share/proto/store/player_store.proto` 是账号、玩家、背包、任务、邮件的唯一完整数据结构定义；玩家 protobuf 统一使用 `PB_PLAYER_*` 命名。
+- MySQL 表结构放在 `deploy/sql/mysql/001_player_store.sql`，当前包含 `account_data`、`player_data`、`bag_data`、`task_data`、`mail_data`。当前数据库尚未投入数据，直接以该脚本创建新表；后续已投入数据的表结构变更须新增版本化迁移脚本。
+- 每张表只展开业务查询、排序、分片或排障常用的固定列，例如 `uid`、`account_id`、`state`、`level`、`send_time_ms`、计数和版本字段。
+- 完整业务数据统一写入 `data_blob`，内容是对应的 `PB_*_DATA` protobuf 二进制。
+- `server/services/common/store` 提供 `PlayerStore` 抽象和 `MysqlPlayerStore` 实现；它依赖 `abe_db_t`，不直接暴露 MySQL 后端类型。
+- `logic` 层后续只依赖存储抽象和 protobuf 数据对象；真实 DB 连接仍由 `services` 装配。
+
+背包内部按 protobuf 分成 `item_list`、`equipment_list`、`appearance_list`；邮件可按 `mail_id` 单封读取，也可按 `uid` 加状态加载列表。需要给运营或排障查询的新条件，优先补固定投影列；只参与业务内存计算、无需 SQL 查询的字段留在 protobuf blob 中。
+
+## 全局 ID 与异步后端
+
+`common/id/abe_snowflake.h` 提供全区全服共用的 64 位雪花 ID。格式为 41 位自 `2024-01-01T00:00:00Z` 起的毫秒、10 位 `id.node_id` 和 12 位毫秒内序号。账号 ID、玩家 UID、邮件 ID、背包内实例 ID、任务实例 ID 都从同一生成器取得。每个正在运行的服务进程必须拥有全局唯一的 `id.node_id`，范围 `0..1023`；本地开发可使用 `0`，部署环境禁止复用节点号。
+
+运行时 `Context` 提供 `id_generator`、`mysql` 和 `redis`：
+
+- MySQL 使用 `abe_db_mysql_async_*`。每个工作线程独占一个连接，SQL 在工作线程执行，查询结果复制后由服务主循环回调；回调内才可读取结果，不能保存结果指针。
+- Redis 使用 `abe_redis_async_*` 和 hiredis 非阻塞连接。连接完成前命令返回 `ABE_WOULD_BLOCK`，服务主循环持续调用 `update` 后再提交命令。
+- 公共 runtime 已自动在每个 tick 驱动这两个异步句柄，因此服务代码不创建 DB 线程，也不在 Session 中阻塞等待数据库。
+
+现有 `abe_db_t` 和 `MysqlPlayerStore` 保留给启动迁移、运维脚本或明确的同步管理路径；正常在线服务通过 `Context::mysql` 和 `Context::redis` 发起异步访问。
+`gateway.server_id` 仍是 Session 路由的服务标识，不替代 `id.node_id`；后者必须按进程实例全局分配。
 
 ## Gateway 服务
 
@@ -169,6 +196,8 @@ gateway 可执行文件固定输出到 `bin/abe_gateway`，配置文件默认为
 覆盖 build 目录，用 `GATEWAY_CONFIG` 覆盖 gateway 配置文件。
 服务启停脚本只负责启动已经编译好的二进制，不会自动编译代码。默认把 gateway pid 写到
 `bin/run/gateway.pid`，stdout/stderr 写到 `bin/logs/gateway/stdout.log`。
+停服脚本只删除 pid 文件，不删除日志。gateway 的 `bin/gate.json` 默认配置为 `log.output=daily`，
+所以业务日志写文件，不会打印到启服终端；实时查看可以直接 tail 日志文件。
 
 gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。命令行只保留公共 runtime 参数，
 用于切换配置文件或临时覆盖日志、数据库、Redis 等公共运行环境。
@@ -188,6 +217,8 @@ gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。命令行只
 --mysql-database <name>  MySQL 数据库名，默认服务名
 --mysql-user <user>      MySQL 用户
 --mysql-password <pwd>   MySQL 密码
+--mysql-workers <count>  MySQL 异步工作连接数，默认 4
+--mysql-queue-capacity <count> MySQL 最大未完成请求数，默认 4096
 --redis-enable <0|1>     启动时是否连接 Redis，默认 0
 --redis-host <host>      Redis 地址，默认 127.0.0.1
 --redis-port <port>      Redis 端口，默认 6379
@@ -195,6 +226,7 @@ gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。命令行只
 --redis-database <index> Redis database，默认 0
 --redis-connect-timeout-ms <ms> Redis 连接超时，默认 1000
 --redis-command-timeout-ms <ms> Redis 命令超时，默认 1000
+--id-node-id <0-1023>    全区全服唯一的雪花节点号
 ```
 
 对应 JSON 配置键：
@@ -212,6 +244,8 @@ mysql.port
 mysql.database
 mysql.user
 mysql.password
+mysql.worker_count
+mysql.queue_capacity
 redis.enable
 redis.host
 redis.port
@@ -220,6 +254,7 @@ redis.database
 redis.connect_timeout_ms
 redis.command_timeout_ms
 redis.memory_pool_capacity
+id.node_id
 gateway.host
 gateway.port
 gateway.max_clients
@@ -238,6 +273,11 @@ gateway.idle_ms
 ```
 
 gateway 默认配置写到 `bin/logs/gateway/YYYY-MM-DD/gateway.log`。
+gateway 进程 stdout/stderr 写到 `bin/logs/gateway/stdout.log`。查看当前日志：
+
+```bash
+tail -F bin/logs/gateway/stdout.log bin/logs/gateway/$(date +%F)/gateway.log
+```
 
 例如东八区日志：
 

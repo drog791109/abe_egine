@@ -26,28 +26,6 @@ typedef enum abe_db_status {
     ABE_DB_UNSUPPORTED = ABE_UNSUPPORTED
 } abe_db_status_t;
 
-typedef struct abe_db_async_query_result {
-    int status;
-    abe_db_result_t* result;
-    const char* error_message;
-} abe_db_async_query_result_t;
-
-typedef struct abe_db_async_execute_result {
-    int status;
-    uint64_t affected_rows;
-    const char* error_message;
-} abe_db_async_execute_result_t;
-
-typedef void (*abe_db_query_callback_fn)(
-    abe_db_t* db,
-    const abe_db_async_query_result_t* result,
-    void* user_data);
-
-typedef void (*abe_db_execute_callback_fn)(
-    abe_db_t* db,
-    const abe_db_async_execute_result_t* result,
-    void* user_data);
-
 int abe_db_ping(abe_db_t* db);
 int abe_db_execute(abe_db_t* db, const char* sql, uint64_t* out_affected_rows);
 int abe_db_query(abe_db_t* db, const char* sql, abe_db_result_t** out_result);
@@ -69,22 +47,6 @@ int abe_db_escape_string(
     char* out_buffer,
     uint64_t buffer_size,
     uint64_t* out_length);
-
-/*
- * The default async helpers may complete before returning. If a query callback
- * receives result != NULL, the callback owns it and must destroy it.
- */
-int abe_db_query_async(
-    abe_db_t* db,
-    const char* sql,
-    abe_db_query_callback_fn callback,
-    void* user_data);
-
-int abe_db_execute_async(
-    abe_db_t* db,
-    const char* sql,
-    abe_db_execute_callback_fn callback,
-    void* user_data);
 
 void abe_db_destroy(abe_db_t* db);
 

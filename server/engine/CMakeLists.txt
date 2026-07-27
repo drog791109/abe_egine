@@ -21,6 +21,9 @@ if(ABE_ENGINE_BUILD_LOGIC)
         ${CMAKE_CURRENT_SOURCE_DIR}/../share/proto/client
         ${CMAKE_CURRENT_BINARY_DIR}/share/proto/client)
     add_subdirectory(
+        ${CMAKE_CURRENT_SOURCE_DIR}/../share/proto/store
+        ${CMAKE_CURRENT_BINARY_DIR}/share/proto/store)
+    add_subdirectory(
         ${CMAKE_CURRENT_SOURCE_DIR}/../logic
         ${CMAKE_CURRENT_BINARY_DIR}/logic)
 endif()

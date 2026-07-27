@@ -401,44 +401,6 @@ int abe_db_escape_string(
     return ABE_DB_OK;
 }
 
-int abe_db_query_async(
-    abe_db_t* db,
-    const char* sql,
-    abe_db_query_callback_fn callback,
-    void* user_data)
-{
-    abe_db_async_query_result_t async_result;
-
-    if (callback == NULL) {
-        return ABE_DB_INVALID_ARG;
-    }
-
-    async_result.result = NULL;
-    async_result.status = abe_db_query(db, sql, &async_result.result);
-    async_result.error_message = async_result.status == ABE_DB_OK ? "" : abe_db_last_error(db);
-    callback(db, &async_result, user_data);
-    return async_result.status;
-}
-
-int abe_db_execute_async(
-    abe_db_t* db,
-    const char* sql,
-    abe_db_execute_callback_fn callback,
-    void* user_data)
-{
-    abe_db_async_execute_result_t async_result;
-
-    if (callback == NULL) {
-        return ABE_DB_INVALID_ARG;
-    }
-
-    async_result.affected_rows = 0u;
-    async_result.status = abe_db_execute(db, sql, &async_result.affected_rows);
-    async_result.error_message = async_result.status == ABE_DB_OK ? "" : abe_db_last_error(db);
-    callback(db, &async_result, user_data);
-    return async_result.status;
-}
-
 void abe_db_destroy(abe_db_t* db)
 {
     abe_mem_pool_t* mem_pool;

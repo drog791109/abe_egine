@@ -372,7 +372,15 @@ scripts/services_start.sh gateway
 scripts/services_stop.sh gateway
 ```
 
-查看日志：
+`scripts/services_stop.sh` 只删除 pid 文件，不删除 `bin/logs/` 下的日志文件。gateway 默认配置为
+`log.output=daily`，业务日志不会打印到启服终端，会写到上面的按天日志文件。查看 gateway 日志可以直接
+tail 对应文件：
+
+```bash
+tail -F bin/logs/gateway/stdout.log bin/logs/gateway/$(date +%F)/gateway.log
+```
+
+查看 Docker/Compose 环境容器日志：
 
 ```bash
 deploy/docker/dev.sh logs

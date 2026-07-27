@@ -3,6 +3,7 @@
 #include "abe_db_driver.h"
 
 #include <mysql.h>
+#include <pthread.h>
 #include <string.h>
 
 #define ABE_DB_MYSQL_DEFAULT_PORT 3306u
@@ -25,6 +26,9 @@ struct abe_db_mysql_result {
     uint32_t field_count;
     uint64_t row_count;
 };
+
+static pthread_mutex_t g_abe_db_mysql_library_mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint32_t g_abe_db_mysql_library_refs = 0u;
 
 static void abe_db_mysql_copy_error(struct abe_db_mysql* mysql_db, const char* fallback)
 {
@@ -446,12 +450,30 @@ static const abe_db_result_ops_t g_abe_db_mysql_result_ops = {
 
 int abe_db_mysql_library_init(void)
 {
-    return mysql_library_init(0, NULL, NULL) == 0 ? ABE_DB_OK : ABE_DB_ERROR;
+    int status;
+
+    (void)pthread_mutex_lock(&g_abe_db_mysql_library_mutex);
+    status = ABE_DB_OK;
+    if (g_abe_db_mysql_library_refs == 0u && mysql_library_init(0, NULL, NULL) != 0) {
+        status = ABE_DB_ERROR;
+    }
+    if (status == ABE_DB_OK) {
+        ++g_abe_db_mysql_library_refs;
+    }
+    (void)pthread_mutex_unlock(&g_abe_db_mysql_library_mutex);
+    return status;
 }
 
 void abe_db_mysql_library_end(void)
 {
-    mysql_library_end();
+    (void)pthread_mutex_lock(&g_abe_db_mysql_library_mutex);
+    if (g_abe_db_mysql_library_refs > 0u) {
+        --g_abe_db_mysql_library_refs;
+        if (g_abe_db_mysql_library_refs == 0u) {
+            mysql_library_end();
+        }
+    }
+    (void)pthread_mutex_unlock(&g_abe_db_mysql_library_mutex);
 }
 
 int abe_db_mysql_create(const abe_db_mysql_config_t* config, abe_db_t** out_db)

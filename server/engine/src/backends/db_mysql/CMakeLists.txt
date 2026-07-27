@@ -29,8 +29,11 @@ if(NOT ABE_MYSQL_CLIENT_FOUND)
     endif()
 endif()
 
+find_package(Threads REQUIRED)
+
 add_library(abe_backend_db_mysql STATIC
     abe_db_mysql.c
+    abe_db_mysql_async.c
 )
 
 set_target_properties(abe_backend_db_mysql
@@ -58,6 +61,7 @@ target_link_libraries(abe_backend_db_mysql
         abe_common_db
         ${ABE_MYSQL_CLIENT_LIBRARIES}
         ${ABE_MYSQL_LIBRARY}
+        Threads::Threads
 )
 
 target_link_options(abe_backend_db_mysql

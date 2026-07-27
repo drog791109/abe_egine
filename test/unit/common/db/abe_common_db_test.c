@@ -263,36 +263,6 @@ static const abe_db_result_ops_t g_fake_result_ops = {
     fake_get_data
 };
 
-struct async_state {
-    int called;
-};
-
-static void on_query(abe_db_t* db, const abe_db_async_query_result_t* result, void* user_data)
-{
-    struct async_state* state;
-
-    (void)db;
-    state = (struct async_state*)user_data;
-    state->called += 1;
-    if (result != NULL && result->result != NULL) {
-        abe_db_result_destroy(result->result);
-    }
-}
-
-static void on_execute(
-    abe_db_t* db,
-    const abe_db_async_execute_result_t* result,
-    void* user_data)
-{
-    struct async_state* state;
-
-    (void)db;
-    state = (struct async_state*)user_data;
-    if (result != NULL && result->status == ABE_DB_OK && result->affected_rows == 3u) {
-        state->called += 1;
-    }
-}
-
 static int test_common_db(void)
 {
     abe_mem_pool_config_t pool_config;
@@ -300,7 +270,6 @@ static int test_common_db(void)
     struct fake_db* fake;
     abe_db_t* db;
     abe_db_result_t* result;
-    struct async_state async_state;
     uint64_t affected_rows;
     uint64_t length;
     int64_t id;
@@ -376,12 +345,6 @@ static int test_common_db(void)
     TEST_REQUIRE(abe_db_result_next(result, &has_row) == ABE_DB_OK);
     TEST_REQUIRE(has_row == 0);
     abe_db_result_destroy(result);
-
-    memset(&async_state, 0, sizeof(async_state));
-    TEST_REQUIRE(abe_db_query_async(db, "select * from t", on_query, &async_state) == ABE_DB_OK);
-    TEST_REQUIRE(abe_db_execute_async(db, "update t set v=2", on_execute, &async_state) ==
-        ABE_DB_OK);
-    TEST_REQUIRE(async_state.called == 2);
 
     abe_db_destroy(db);
     return 0;

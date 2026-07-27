@@ -22,6 +22,7 @@ struct abe_redis {
 struct abe_redis_reply {
     abe_redis_t* owner;
     redisReply* reply;
+    int owns_reply;
 };
 
 static uint64_t abe_redis_pool_capacity(uint64_t configured_capacity)
@@ -270,6 +271,7 @@ int abe_redis_command(
 
     reply->owner = redis;
     reply->reply = raw_reply;
+    reply->owns_reply = 1;
     *out_reply = reply;
     return ABE_REDIS_OK;
 }
@@ -332,7 +334,7 @@ void abe_redis_reply_destroy(abe_redis_reply_t* reply)
         return;
     }
     mem_pool = reply->owner == NULL ? NULL : reply->owner->mem_pool;
-    if (reply->reply != NULL) {
+    if (reply->owns_reply && reply->reply != NULL) {
         freeReplyObject(reply->reply);
         reply->reply = NULL;
     }

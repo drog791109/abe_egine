@@ -1397,6 +1397,8 @@ scripts/services_stop.sh gateway
 
 gateway 默认运行文件放在项目 `bin` 目录：pid 文件为 `bin/run/gateway.pid`，stdout/stderr 为
 `bin/logs/gateway/stdout.log`，业务日志为 `bin/logs/gateway/YYYY-MM-DD/gateway.log`。
+停服脚本只删除 pid 文件，不删除日志；gateway 默认写按天业务日志，不打印到启服终端。需要实时查看时，
+直接执行 `tail -F bin/logs/gateway/stdout.log bin/logs/gateway/$(date +%F)/gateway.log`。
 
 `dev` 容器内源码挂载到 `/workspace`，并预设以下连接配置：
 

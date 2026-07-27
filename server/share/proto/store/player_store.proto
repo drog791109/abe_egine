@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+package abe.proto.store;
+
+option cc_enable_arenas = true;
+
+enum AccountState {
+  ACCOUNT_STATE_INVALID = 0;
+  ACCOUNT_STATE_NORMAL = 1;
+  ACCOUNT_STATE_BANNED = 2;
+  ACCOUNT_STATE_DELETED = 3;
+}
+
+enum PlayerState {
+  PLAYER_STATE_INVALID = 0;
+  PLAYER_STATE_NORMAL = 1;
+  PLAYER_STATE_OFFLINE = 2;
+  PLAYER_STATE_ONLINE = 3;
+  PLAYER_STATE_IN_ROOM = 4;
+  PLAYER_STATE_IN_GAME = 5;
+}
+
+enum ItemBindType {
+  ITEM_BIND_NONE = 0;
+  ITEM_BIND_ACCOUNT = 1;
+  ITEM_BIND_PLAYER = 2;
+}
+
+enum MailState {
+  MAIL_STATE_INVALID = 0;
+  MAIL_STATE_UNREAD = 1;
+  MAIL_STATE_READ = 2;
+  MAIL_STATE_CLAIMED = 3;
+  MAIL_STATE_DELETED = 4;
+}
+
+enum TaskState {
+  TASK_STATE_INVALID = 0;
+  TASK_STATE_ACTIVE = 1;
+  TASK_STATE_FINISHED = 2;
+  TASK_STATE_CLAIMABLE = 3;
+  TASK_STATE_CLAIMED = 4;
+  TASK_STATE_EXPIRED = 5;
+}
+
+message PB_STORE_META {
+  uint32 schema_version = 1;
+  uint64 data_version = 2;
+  uint64 created_at_ms = 3;
+  uint64 updated_at_ms = 4;
+}
+
+message PB_ACCOUNT_DATA {
+  PB_STORE_META meta = 1;
+  uint64 account_id = 2;
+  uint64 uid = 3;
+  string account_name = 4;
+  string open_id = 5;
+  AccountState state = 6;
+  uint64 last_login_time_ms = 7;
+  uint64 last_logout_time_ms = 8;
+  string last_login_ip = 9;
+  string device_id = 10;
+  string channel = 11;
+}
+
+message PB_PLAYER_PROFILE {
+  string nickname = 1;
+  uint32 sex = 2;
+  uint32 avatar_id = 3;
+  uint32 level = 4;
+  uint64 exp = 5;
+  string region = 6;
+}
+
+message PB_PLAYER_WALLET {
+  int64 gold = 1;
+  int64 diamond = 2;
+  int64 paid_diamond = 3;
+}
+
+message PB_PLAYER_DATA {
+  PB_STORE_META meta = 1;
+  uint64 uid = 2;
+  uint64 account_id = 3;
+  PlayerState state = 4;
+  PB_PLAYER_PROFILE profile = 5;
+  PB_PLAYER_WALLET wallet = 6;
+  uint64 room_id = 7;
+  uint64 last_login_time_ms = 8;
+  uint64 last_logout_time_ms = 9;
+}
+
+message PB_ITEM_STACK {
+  uint64 item_uid = 1;
+  uint32 item_id = 2;
+  uint64 count = 3;
+  ItemBindType bind_type = 4;
+  uint64 expire_time_ms = 5;
+}
+
+message PB_EQUIPMENT {
+  uint64 equip_uid = 1;
+  uint32 equip_id = 2;
+  uint32 slot = 3;
+  uint32 level = 4;
+  uint32 quality = 5;
+  repeated uint32 attr_id_list = 6;
+  ItemBindType bind_type = 7;
+  uint64 expire_time_ms = 8;
+}
+
+message PB_APPEARANCE {
+  uint64 appearance_uid = 1;
+  uint32 appearance_id = 2;
+  uint32 slot = 3;
+  bool equipped = 4;
+  uint64 expire_time_ms = 5;
+}
+
+message PB_BAG_DATA {
+  PB_STORE_META meta = 1;
+  uint64 uid = 2;
+  uint32 capacity = 3;
+  repeated PB_ITEM_STACK item_list = 4;
+  repeated PB_EQUIPMENT equipment_list = 5;
+  repeated PB_APPEARANCE appearance_list = 6;
+}
+
+message PB_TASK_PROGRESS {
+  uint64 task_uid = 1;
+  uint32 task_id = 2;
+  TaskState state = 3;
+  uint64 progress = 4;
+  uint64 target = 5;
+  uint64 accepted_at_ms = 6;
+  uint64 finished_at_ms = 7;
+  uint64 claimed_at_ms = 8;
+}
+
+message PB_TASK_DATA {
+  PB_STORE_META meta = 1;
+  uint64 uid = 2;
+  repeated PB_TASK_PROGRESS task_list = 3;
+}
+
+message PB_MAIL_ATTACHMENT {
+  uint32 item_id = 1;
+  uint64 count = 2;
+}
+
+message PB_MAIL_DATA {
+  PB_STORE_META meta = 1;
+  uint64 mail_id = 2;
+  uint64 uid = 3;
+  MailState state = 4;
+  string title = 5;
+  string content = 6;
+  string sender = 7;
+  repeated PB_MAIL_ATTACHMENT attachment_list = 8;
+  uint64 send_time_ms = 9;
+  uint64 expire_time_ms = 10;
+  uint64 read_time_ms = 11;
+  uint64 claim_time_ms = 12;
+}
+
+message PB_MAIL_LIST {
+  repeated PB_MAIL_DATA mail_list = 1;
+}
