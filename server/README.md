@@ -126,10 +126,10 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - 初始化日志。
 - 按需初始化 MySQL 工作线程连接池和 Redis 非阻塞连接，并通过 runtime context 交给具体服务。
 - 创建雪花 ID 生成器，并通过 runtime context 交给具体服务。
-- 创建并持有网络 `Loop`。
+- 创建并持有网络 `Loop`、公共时间轮和公共消息处理队列。
 - 安装停止信号处理。
-- 按主循环顺序执行 `Loop::update()`、MySQL/Redis 异步回调和服务 `update()`。
-- 关闭服务，再销毁网络 `Loop`、Redis、MySQL 工作线程、雪花 ID、配置和日志。
+- 按主循环顺序执行 `Loop::update()`、时间轮 update、消息队列 tick、MySQL/Redis 异步回调和服务 `update()`。
+- 关闭服务，再销毁消息队列、时间轮、网络 `Loop`、Redis、MySQL 工作线程、雪花 ID、配置和日志。
 
 每个具体服务保留自己的 server 对象，并继承公共 `Service` 接口。入口里只创建 server，然后调用
 `run(argc, argv, server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionServer、RPC 客户端、缓存连接等。
@@ -247,6 +247,10 @@ gateway、login 和 gatehub 的 JSON 配置字段都直接通过 `abe_config.h` 
 ```text
 --config <path>          JSON 配置文件，gateway 默认 bin/gate.json
 --tick-ms <ms>           主循环 sleep 毫秒数，默认 10
+--timer-max-count <count> 服务时间轮最大 timer 数，默认 65536
+--message-tick-hz <hz>   收包消息队列处理频率，默认 30
+--message-max-per-tick <count> 每个消息 tick 最多处理收包数，默认 500
+--message-queue-capacity <count> 收包消息队列容量，默认 65536
 --log-output <mode>      console/file/daily，默认 console；gateway 配置默认为 daily
 --log-file <path>        log-output=file 时的日志文件
 --log-dir <path>         log-output=daily 时的日志根目录，默认 logs；gateway 配置默认为 bin/logs/gateway
@@ -273,6 +277,10 @@ gateway、login 和 gatehub 的 JSON 配置字段都直接通过 `abe_config.h` 
 
 ```text
 runtime.tick_ms
+runtime.timer_max_count
+runtime.message_tick_hz
+runtime.message_max_per_tick
+runtime.message_queue_capacity
 log.output
 log.file
 log.dir

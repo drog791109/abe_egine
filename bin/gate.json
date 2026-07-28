@@ -1,6 +1,10 @@
 {
   "runtime": {
-    "tick_ms": 10
+    "tick_ms": 10,
+    "timer_max_count": 65536,
+    "message_tick_hz": 30,
+    "message_max_per_tick": 500,
+    "message_queue_capacity": 65536
   },
   "log": {
     "output": "daily",

@@ -4,6 +4,7 @@
 
 #include <signal.h>
 #include <stdint.h>
+#include <string.h>
 
 namespace service_common = abe::service::common;
 
@@ -19,6 +20,7 @@ public:
           test_value(0u),
           loop_seen(false),
           time_wheel_seen(false),
+          message_queue_seen(false),
           config_seen(false),
           mysql_seen(false),
           id_seen(false),
@@ -26,6 +28,15 @@ public:
           wait_for_timer(false),
           timer_fired(false),
           timer(NULL),
+          schedule_messages(false),
+          wait_for_messages(false),
+          message_count(0u),
+          target_message_count(0u),
+          first_update_message_count(0u),
+          runtime_timer_max_count(0u),
+          runtime_message_tick_hz(0u),
+          runtime_message_max_per_tick(0u),
+          runtime_message_queue_capacity(0u),
           options_status(service_common::SERVICE_STATUS_OK),
           load_config_status(service_common::SERVICE_STATUS_OK),
           init_status(service_common::SERVICE_STATUS_OK),
@@ -72,8 +83,15 @@ public:
         ++init_count;
         loop_seen = context.loop != NULL;
         time_wheel_seen = context.time_wheel != NULL;
+        message_queue_seen = context.message_queue != NULL;
         mysql_seen = context.mysql != NULL;
         id_seen = context.id_generator != NULL;
+        if (context.runtime != NULL) {
+            runtime_timer_max_count = context.runtime->timer_max_count;
+            runtime_message_tick_hz = context.runtime->message_tick_hz;
+            runtime_message_max_per_tick = context.runtime->message_max_per_tick;
+            runtime_message_queue_capacity = context.runtime->message_queue_capacity;
+        }
         if (init_status != service_common::SERVICE_STATUS_OK) {
             return init_status;
         }
@@ -89,6 +107,28 @@ public:
                 &timer);
             if (rc != ABE_TIMER_OK) {
                 return rc;
+            }
+        }
+        if (schedule_messages) {
+            uint32_t index;
+
+            if (context.message_queue == NULL || target_message_count == 0u) {
+                return service_common::SERVICE_STATUS_INVALID_ARG;
+            }
+            index = 0u;
+            while (index < target_message_count) {
+                rc = context.message_queue->push(
+                    on_message,
+                    this,
+                    this,
+                    (uint64_t)(index + 1u),
+                    NULL,
+                    0u,
+                    abe_time_mono_ms());
+                if (rc != service_common::SERVICE_STATUS_OK) {
+                    return rc;
+                }
+                ++index;
             }
         }
         return service_common::SERVICE_STATUS_OK;
@@ -107,6 +147,19 @@ public:
                 return service_common::SERVICE_STATUS_OK;
             }
             if (update_count > 32u) {
+                return service_common::SERVICE_STATUS_FAILED;
+            }
+            return service_common::SERVICE_STATUS_OK;
+        }
+        if (wait_for_messages) {
+            if (update_count == 1u) {
+                first_update_message_count = message_count;
+            }
+            if (message_count >= target_message_count) {
+                service_common::request_stop();
+                return service_common::SERVICE_STATUS_OK;
+            }
+            if (update_count > 128u) {
                 return service_common::SERVICE_STATUS_FAILED;
             }
             return service_common::SERVICE_STATUS_OK;
@@ -133,6 +186,18 @@ public:
         }
     }
 
+    static int on_message(const service_common::Message& message, void* user_data)
+    {
+        TestService* service;
+
+        service = (TestService*)user_data;
+        if (service == NULL || message.source != service) {
+            return service_common::SERVICE_STATUS_INVALID_ARG;
+        }
+        ++service->message_count;
+        return service_common::SERVICE_STATUS_OK;
+    }
+
     uint32_t defaults_count;
     uint32_t options_count;
     uint32_t load_config_count;
@@ -142,6 +207,7 @@ public:
     uint32_t test_value;
     bool loop_seen;
     bool time_wheel_seen;
+    bool message_queue_seen;
     bool config_seen;
     bool mysql_seen;
     bool id_seen;
@@ -149,11 +215,94 @@ public:
     bool wait_for_timer;
     bool timer_fired;
     abe_timer_t* timer;
+    bool schedule_messages;
+    bool wait_for_messages;
+    uint32_t message_count;
+    uint32_t target_message_count;
+    uint32_t first_update_message_count;
+    uint32_t runtime_timer_max_count;
+    uint32_t runtime_message_tick_hz;
+    uint32_t runtime_message_max_per_tick;
+    uint32_t runtime_message_queue_capacity;
     int options_status;
     int load_config_status;
     int init_status;
     int update_status;
 };
+
+struct QueueCounter {
+    uint32_t count;
+    uint64_t last_source_id;
+};
+
+static int on_queue_message(const service_common::Message& message, void* user_data)
+{
+    QueueCounter* counter;
+
+    counter = (QueueCounter*)user_data;
+    if (counter == NULL) {
+        return service_common::SERVICE_STATUS_INVALID_ARG;
+    }
+    ++counter->count;
+    counter->last_source_id = message.source_id;
+    return service_common::SERVICE_STATUS_OK;
+}
+
+static int test_message_queue_process_limit(void)
+{
+    service_common::MessageQueue queue;
+    QueueCounter counter;
+    uint32_t processed_count;
+    uint32_t failed_count;
+    const char payload[] = "x";
+
+    memset(&counter, 0, sizeof(counter));
+    TEST_REQUIRE(queue.init(4u) == service_common::SERVICE_STATUS_OK);
+    TEST_REQUIRE(queue.push(
+        on_queue_message,
+        &counter,
+        NULL,
+        1u,
+        payload,
+        1u,
+        100u) == service_common::SERVICE_STATUS_OK);
+    TEST_REQUIRE(queue.push(
+        on_queue_message,
+        &counter,
+        NULL,
+        2u,
+        payload,
+        1u,
+        100u) == service_common::SERVICE_STATUS_OK);
+    TEST_REQUIRE(queue.push(
+        on_queue_message,
+        &counter,
+        NULL,
+        3u,
+        payload,
+        1u,
+        100u) == service_common::SERVICE_STATUS_OK);
+
+    processed_count = 0u;
+    failed_count = 0u;
+    TEST_REQUIRE(queue.process(2u, &processed_count, &failed_count) ==
+        service_common::SERVICE_STATUS_OK);
+    TEST_REQUIRE(processed_count == 2u);
+    TEST_REQUIRE(failed_count == 0u);
+    TEST_REQUIRE(counter.count == 2u);
+    TEST_REQUIRE(counter.last_source_id == 2u);
+    TEST_REQUIRE(queue.count() == 1u);
+
+    TEST_REQUIRE(queue.process(2u, &processed_count, &failed_count) ==
+        service_common::SERVICE_STATUS_OK);
+    TEST_REQUIRE(processed_count == 1u);
+    TEST_REQUIRE(failed_count == 0u);
+    TEST_REQUIRE(counter.count == 3u);
+    TEST_REQUIRE(counter.last_source_id == 3u);
+    TEST_REQUIRE(queue.count() == 0u);
+    queue.close();
+    return ABE_TEST_STATUS_OK;
+}
 
 static int test_run_calls_service_directly(void)
 {
@@ -181,9 +330,14 @@ static int test_run_calls_service_directly(void)
     TEST_REQUIRE(service.test_value == 7u);
     TEST_REQUIRE(service.loop_seen);
     TEST_REQUIRE(service.time_wheel_seen);
+    TEST_REQUIRE(service.message_queue_seen);
     TEST_REQUIRE(!service.config_seen);
     TEST_REQUIRE(!service.mysql_seen);
     TEST_REQUIRE(service.id_seen);
+    TEST_REQUIRE(service.runtime_timer_max_count == 65536u);
+    TEST_REQUIRE(service.runtime_message_tick_hz == 30u);
+    TEST_REQUIRE(service.runtime_message_max_per_tick == 500u);
+    TEST_REQUIRE(service.runtime_message_queue_capacity == 65536u);
     return ABE_TEST_STATUS_OK;
 }
 
@@ -213,6 +367,45 @@ static int test_run_updates_time_wheel(void)
     TEST_REQUIRE(service.time_wheel_seen);
     TEST_REQUIRE(service.timer_fired);
     TEST_REQUIRE(service.update_count > 0u);
+    TEST_REQUIRE(service.close_count == 1u);
+    return ABE_TEST_STATUS_OK;
+}
+
+static int test_run_processes_message_queue_by_tick(void)
+{
+    TestService service;
+    char program[] = "runtime_test";
+    char log_level_name[] = "--log-level";
+    char log_level_value[] = "off";
+    char tick_name[] = "--tick-ms";
+    char tick_value[] = "1";
+    char tick_hz_name[] = "--message-tick-hz";
+    char tick_hz_value[] = "1000";
+    char max_per_tick_name[] = "--message-max-per-tick";
+    char max_per_tick_value[] = "2";
+    char capacity_name[] = "--message-queue-capacity";
+    char capacity_value[] = "8";
+    char* argv[] = {
+        program,
+        log_level_name,
+        log_level_value,
+        tick_name,
+        tick_value,
+        tick_hz_name,
+        tick_hz_value,
+        max_per_tick_name,
+        max_per_tick_value,
+        capacity_name,
+        capacity_value
+    };
+
+    service.schedule_messages = true;
+    service.wait_for_messages = true;
+    service.target_message_count = 3u;
+    TEST_REQUIRE(service_common::run(11, argv, service) == service_common::SERVICE_STATUS_OK);
+    TEST_REQUIRE(service.message_queue_seen);
+    TEST_REQUIRE(service.message_count == 3u);
+    TEST_REQUIRE(service.first_update_message_count == 2u);
     TEST_REQUIRE(service.close_count == 1u);
     return ABE_TEST_STATUS_OK;
 }
@@ -326,10 +519,16 @@ int main()
     if (test_service_status_uses_common_error_codes() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
+    if (test_message_queue_process_limit() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
     if (test_run_calls_service_directly() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_run_updates_time_wheel() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+    if (test_run_processes_message_queue_by_tick() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_run_returns_option_registration_error() != ABE_TEST_STATUS_OK) {
