@@ -1,7 +1,8 @@
 #include "abe_service_args.h"
 
+#include "abe_log.h"
+
 #include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -201,17 +202,26 @@ int service_parse_options(
 
         option = find_option(options, option_count, name);
         if (option == NULL) {
-            fprintf(stderr, "unknown option: %s\n", name);
+            ABE_LOG_ERROR(
+                "unknown service option name=%s status=%s",
+                name,
+                abe_status_name(SERVICE_ARG_UNKNOWN_OPTION));
             return SERVICE_ARG_UNKNOWN_OPTION;
         }
         if (index + 1 >= argc) {
-            fprintf(stderr, "missing value for option: %s\n", name);
+            ABE_LOG_ERROR(
+                "missing service option value name=%s status=%s",
+                name,
+                abe_status_name(SERVICE_ARG_MISSING_VALUE));
             return SERVICE_ARG_MISSING_VALUE;
         }
 
         rc = parse_option_value(option, argv[index + 1]);
         if (rc != SERVICE_ARG_OK) {
-            fprintf(stderr, "invalid value for option: %s\n", name);
+            ABE_LOG_ERROR(
+                "invalid service option value name=%s status=%s",
+                name,
+                abe_status_name(rc));
             return rc;
         }
         index += 2;
@@ -220,29 +230,29 @@ int service_parse_options(
     return SERVICE_ARG_OK;
 }
 
-void service_print_usage(
+void service_log_usage(
     const char* program,
     const ServiceOption* options,
     uint32_t option_count)
 {
     uint32_t index;
 
-    printf("Usage: %s [options]\n", program == NULL ? "service" : program);
+    ABE_LOG_INFO("usage: %s [options]", program == NULL ? "service" : program);
     index = 0u;
     while (index < option_count) {
         const ServiceOption* option;
 
         option = &options[index];
         if (option->name != NULL) {
-            printf(
-                "  %s <%s>    %s\n",
+            ABE_LOG_INFO(
+                "option: %s <%s> %s",
                 option->name,
                 option->value_name == NULL ? "value" : option->value_name,
                 option->description == NULL ? "" : option->description);
         }
         ++index;
     }
-    printf("  --help             show this help\n");
+    ABE_LOG_INFO("option: --help show this help");
 }
 
 } /* namespace common */

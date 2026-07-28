@@ -5,7 +5,6 @@
 #include "abe_time.h"
 #include "protocol.pb.h"
 
-#include <stdio.h>
 #include <string.h>
 
 namespace abe {
@@ -27,85 +26,6 @@ static int protocol_status_to_session_status(int status)
         return proto::ERROR_CODE_OK;
     }
     return proto::ERROR_CODE_COMMON_PROTOCOL_ERROR;
-}
-
-static int gateway_read_config_string(
-    const abe_config_t* config,
-    const char* path,
-    const char** out_value)
-{
-    const char* text;
-    int rc;
-
-    if (config == NULL || path == NULL || out_value == NULL) {
-        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
-    }
-
-    rc = abe_config_get_string(config, path, &text);
-    if (rc == ABE_CONFIG_NOT_FOUND) {
-        return abe::service::common::SERVICE_STATUS_OK;
-    }
-    if (rc != ABE_CONFIG_OK) {
-        fprintf(stderr, "invalid gateway string config value: %s\n", path);
-        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
-    }
-
-    *out_value = text;
-    return abe::service::common::SERVICE_STATUS_OK;
-}
-
-static int gateway_read_config_u32(
-    const abe_config_t* config,
-    const char* path,
-    uint32_t min_value,
-    uint32_t max_value,
-    uint32_t* out_value)
-{
-    uint64_t value;
-    int rc;
-
-    if (config == NULL || path == NULL || out_value == NULL || min_value > max_value) {
-        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
-    }
-
-    rc = abe_config_get_u64(config, path, &value);
-    if (rc == ABE_CONFIG_NOT_FOUND) {
-        return abe::service::common::SERVICE_STATUS_OK;
-    }
-    if (rc != ABE_CONFIG_OK || value < min_value || value > max_value) {
-        fprintf(stderr, "invalid gateway unsigned config value: %s\n", path);
-        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
-    }
-
-    *out_value = (uint32_t)value;
-    return abe::service::common::SERVICE_STATUS_OK;
-}
-
-static int gateway_read_config_u64(
-    const abe_config_t* config,
-    const char* path,
-    uint64_t min_value,
-    uint64_t max_value,
-    uint64_t* out_value)
-{
-    uint64_t value;
-    int rc;
-
-    if (config == NULL || path == NULL || out_value == NULL || min_value > max_value) {
-        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
-    }
-
-    rc = abe_config_get_u64(config, path, &value);
-    if (rc == ABE_CONFIG_NOT_FOUND) {
-        return abe::service::common::SERVICE_STATUS_OK;
-    }
-    if (rc != ABE_CONFIG_OK || value < min_value || value > max_value) {
-        fprintf(stderr, "invalid gateway unsigned config value: %s\n", path);
-        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
-    }
-
-    *out_value = value;
-    return abe::service::common::SERVICE_STATUS_OK;
 }
 
 void set_gateway_defaults(GatewayServerConfig* config)
@@ -147,57 +67,78 @@ void GatewayServer::defaults()
 
 int GatewayServer::load_config(const abe_config_t* config)
 {
+    const char* text;
+    uint64_t value;
     int rc;
 
     if (config == NULL) {
         return abe::service::common::SERVICE_STATUS_OK;
     }
 
-    rc = gateway_read_config_string(config, "gateway.host", &config_.host);
-    if (rc != abe::service::common::SERVICE_STATUS_OK) {
-        return rc;
+    rc = abe_config_get_string(config, "gateway.host", &text);
+    if (rc == ABE_CONFIG_OK) {
+        config_.host = text;
+    } else if (rc != ABE_CONFIG_NOT_FOUND) {
+        ABE_LOG_ERROR("invalid gateway config path=gateway.host status=%s",
+            abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
+        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
-    rc = gateway_read_config_u32(config, "gateway.port", 1u, 65535u, &config_.port);
-    if (rc != abe::service::common::SERVICE_STATUS_OK) {
-        return rc;
+
+    rc = abe_config_get_u64(config, "gateway.port", &value);
+    if (rc == ABE_CONFIG_OK && value >= 1u && value <= 65535u) {
+        config_.port = (uint32_t)value;
+    } else if (rc != ABE_CONFIG_NOT_FOUND) {
+        ABE_LOG_ERROR("invalid gateway config path=gateway.port status=%s",
+            abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
+        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
-    rc = gateway_read_config_u32(
-        config,
-        "gateway.max_clients",
-        1u,
-        ABE_GATEWAY_MAX_CLIENTS,
-        &config_.max_clients);
-    if (rc != abe::service::common::SERVICE_STATUS_OK) {
-        return rc;
+
+    rc = abe_config_get_u64(config, "gateway.max_clients", &value);
+    if (rc == ABE_CONFIG_OK && value >= 1u && value <= ABE_GATEWAY_MAX_CLIENTS) {
+        config_.max_clients = (uint32_t)value;
+    } else if (rc != ABE_CONFIG_NOT_FOUND) {
+        ABE_LOG_ERROR("invalid gateway config path=gateway.max_clients status=%s",
+            abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
+        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
-    rc = gateway_read_config_u32(config, "gateway.backlog", 1u, 65535u, &config_.backlog);
-    if (rc != abe::service::common::SERVICE_STATUS_OK) {
-        return rc;
+
+    rc = abe_config_get_u64(config, "gateway.backlog", &value);
+    if (rc == ABE_CONFIG_OK && value >= 1u && value <= 65535u) {
+        config_.backlog = (uint32_t)value;
+    } else if (rc != ABE_CONFIG_NOT_FOUND) {
+        ABE_LOG_ERROR("invalid gateway config path=gateway.backlog status=%s",
+            abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
+        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
-    rc = gateway_read_config_u32(
-        config,
-        "gateway.max_packet_size",
-        0u,
-        16777216u,
-        &config_.max_packet_size);
-    if (rc != abe::service::common::SERVICE_STATUS_OK) {
-        return rc;
+
+    rc = abe_config_get_u64(config, "gateway.max_packet_size", &value);
+    if (rc == ABE_CONFIG_OK && value <= 16777216u) {
+        config_.max_packet_size = (uint32_t)value;
+    } else if (rc != ABE_CONFIG_NOT_FOUND) {
+        ABE_LOG_ERROR("invalid gateway config path=gateway.max_packet_size status=%s",
+            abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
+        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
-    rc = gateway_read_config_u64(
-        config,
-        "gateway.server_id",
-        1u,
-        0xffffffffffffffffull,
-        &config_.server_id);
-    if (rc != abe::service::common::SERVICE_STATUS_OK) {
-        return rc;
+
+    rc = abe_config_get_u64(config, "gateway.server_id", &value);
+    if (rc == ABE_CONFIG_OK && value != 0u) {
+        config_.server_id = value;
+    } else if (rc != ABE_CONFIG_NOT_FOUND) {
+        ABE_LOG_ERROR("invalid gateway config path=gateway.server_id status=%s",
+            abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
+        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
-    return gateway_read_config_u64(
-        config,
-        "gateway.idle_ms",
-        0u,
-        0xffffffffffffffffull,
-        &config_.idle_timeout_ms);
+
+    rc = abe_config_get_u64(config, "gateway.idle_ms", &value);
+    if (rc == ABE_CONFIG_OK) {
+        config_.idle_timeout_ms = value;
+    } else if (rc != ABE_CONFIG_NOT_FOUND) {
+        ABE_LOG_ERROR("invalid gateway config path=gateway.idle_ms status=%s",
+            abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
+        return abe::service::common::SERVICE_STATUS_INVALID_ARG;
+    }
+
+    return abe::service::common::SERVICE_STATUS_OK;
 }
 
 int GatewayServer::init(abe::service::common::Context& context)

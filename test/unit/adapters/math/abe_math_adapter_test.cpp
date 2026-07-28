@@ -1,18 +1,10 @@
 #include "abe_math_adapter.h"
 
-#include <stdio.h>
-
-#define TEST_REQUIRE(expr) \
-    do { \
-        if (!(expr)) { \
-            fprintf(stderr, "%s:%d: requirement failed: %s\n", __FILE__, __LINE__, #expr); \
-            return 1; \
-        } \
-    } while (0)
+#include "../../abe_test.h"
 
 namespace math = abe::adapter::math;
 
-static int near_f(float a, float b)
+static bool near_f(float a, float b)
 {
     return math::abs_f(a - b) <= 0.0001f;
 }
@@ -51,7 +43,7 @@ static int test_vector2d(void)
     result.set(8.0f, 10.0f);
     TEST_REQUIRE(result.x == 8.0f && result.y == 10.0f);
     TEST_REQUIRE(math::Vector2d(result.to_c()).equal_epsilon(result, 0.0001f));
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_vector3d(void)
@@ -86,7 +78,7 @@ static int test_vector3d(void)
     result.set(7.0f, 8.0f, 9.0f);
     TEST_REQUIRE(result.x == 7.0f && result.y == 8.0f && result.z == 9.0f);
     TEST_REQUIRE(math::Vector3d(result.to_c()).equal_epsilon(result, 0.0001f));
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_scalar_math(void)
@@ -97,19 +89,19 @@ static int test_scalar_math(void)
     TEST_REQUIRE(near_f(math::sin_f((float)ABE_MATH_HALF_PI), 1.0f));
     TEST_REQUIRE(near_f(math::cos_f(0.0f), 1.0f));
     TEST_REQUIRE(near_f(math::lerp_f(10.0f, 20.0f, 0.25f), 12.5f));
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 int main()
 {
-    if (test_scalar_math() != 0) {
-        return 1;
+    if (test_scalar_math() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_vector2d() != 0) {
-        return 1;
+    if (test_vector2d() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_vector3d() != 0) {
-        return 1;
+    if (test_vector3d() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }

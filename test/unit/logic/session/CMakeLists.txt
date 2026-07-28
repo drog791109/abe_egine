@@ -12,6 +12,7 @@ set_target_properties(abe_logic_session_test
 target_link_libraries(abe_logic_session_test
     PRIVATE
         abe_logic_session
+        abe_engine_log
 )
 
 add_test(NAME abe_logic_session_test COMMAND abe_logic_session_test)

@@ -1,0 +1,40 @@
+{
+  "runtime": {
+    "tick_ms": 10
+  },
+  "log": {
+    "output": "daily",
+    "level": "info",
+    "dir": "bin/logs/gatehub"
+  },
+  "mysql": {
+    "enable": 0,
+    "host": "127.0.0.1",
+    "port": 3306,
+    "database": "abe_gatehub",
+    "user": "abe",
+    "password": "abe123",
+    "worker_count": 4,
+    "queue_capacity": 4096
+  },
+  "redis": {
+    "enable": 0,
+    "host": "127.0.0.1",
+    "port": 6379,
+    "password": "",
+    "database": 0,
+    "connect_timeout_ms": 1000,
+    "command_timeout_ms": 1000,
+    "memory_pool_capacity": 0
+  },
+  "id": {
+    "node_id": 3
+  },
+  "gatehub": {
+    "max_sessions": 4096,
+    "allow_reconnect": true,
+    "replace_duplicate_login": true,
+    "reconnect_grace_ms": 30000,
+    "session_ttl_ms": 86400000
+  }
+}

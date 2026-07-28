@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Run example:
-#   ./scripts/services_start.sh gateway
+#   ./scripts/services_start.sh login gatehub gateway
 # Command description:
 #   Start one or more already-built project service processes in the current environment.
 #
@@ -10,10 +10,12 @@
 #
 # Services:
 #   gateway    Start bin/abe_gateway with bin/gate.json.
-#   all        Start all default services. Currently: gateway.
+#   login      Start bin/abe_login with bin/login.json.
+#   gatehub    Start bin/abe_gatehub with bin/gatehub.json.
+#   all        Start all default services. Currently: login, gatehub, gateway.
 #
 # Defaults:
-#   service    gateway
+#   service    login gatehub gateway
 #   RUN_DIR    bin/run
 #   OUT_DIR    bin/logs
 #
@@ -24,6 +26,12 @@
 #   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
 #   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: ${OUT_DIR}/gateway/stdout.log
 #   GATEWAY_LOG_DIR   Gateway daily log root. Default: ${OUT_DIR}/gateway
+#   LOGIN_BIN         Login binary path. Default: bin/abe_login
+#   LOGIN_CONFIG      Login config path. Default: bin/login.json
+#   LOGIN_ARGS        Extra login arguments split by spaces.
+#   GATEHUB_BIN       Gatehub binary path. Default: bin/abe_gatehub
+#   GATEHUB_CONFIG    Gatehub config path. Default: bin/gatehub.json
+#   GATEHUB_ARGS      Extra gatehub arguments split by spaces.
 #
 # Note:
 #   This script does not build code, start Docker, or enter a container. Build
@@ -41,10 +49,12 @@ Usage:
 
 Services:
   gateway    Start bin/abe_gateway with bin/gate.json.
-  all        Start all default services. Currently: gateway.
+  login      Start bin/abe_login with bin/login.json.
+  gatehub    Start bin/abe_gatehub with bin/gatehub.json.
+  all        Start all default services. Currently: login, gatehub, gateway.
 
 Defaults:
-  service    gateway
+  service    login gatehub gateway
   RUN_DIR    bin/run
   OUT_DIR    bin/logs
 
@@ -55,6 +65,12 @@ Environment:
   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: ${OUT_DIR}/gateway/stdout.log
   GATEWAY_LOG_DIR   Gateway daily log root. Default: ${OUT_DIR}/gateway
+  LOGIN_BIN         Login binary path. Default: bin/abe_login
+  LOGIN_CONFIG      Login config path. Default: bin/login.json
+  LOGIN_ARGS        Extra login arguments split by spaces.
+  GATEHUB_BIN       Gatehub binary path. Default: bin/abe_gatehub
+  GATEHUB_CONFIG    Gatehub config path. Default: bin/gatehub.json
+  GATEHUB_ARGS      Extra gatehub arguments split by spaces.
 
 This script does not start Docker or enter a container. The default project
 runtime is the dev container /workspace; run this script there unless the host
@@ -150,41 +166,55 @@ write_pid_file() {
   } >"${pid_file}"
 }
 
-start_gateway() {
-  local binary config run_dir out_dir pid_file out_file gateway_args
+start_runtime_service() {
+  local service service_key binary_var config_var args_var pid_file_var out_file_var
+  local default_config binary config run_dir out_dir pid_file out_file service_args
   local pid state
   local -a extra_args
 
-  binary=${GATEWAY_BIN:-bin/abe_gateway}
-  config=${GATEWAY_CONFIG:-bin/gate.json}
+  service=$1
+  service_key=$(printf '%s' "${service}" | tr '[:lower:]' '[:upper:]')
+  binary_var=${service_key}_BIN
+  config_var=${service_key}_CONFIG
+  args_var=${service_key}_ARGS
+  pid_file_var=${service_key}_PID_FILE
+  out_file_var=${service_key}_OUT_FILE
+
+  default_config=bin/${service}.json
+  if [ "${service}" = "gateway" ]; then
+    default_config=bin/gate.json
+  fi
+
+  binary=${!binary_var:-bin/abe_${service}}
+  config=${!config_var:-${default_config}}
   run_dir=${RUN_DIR:-bin/run}
   out_dir=${OUT_DIR:-bin/logs}
-  pid_file=${GATEWAY_PID_FILE:-${run_dir}/gateway.pid}
-  out_file=${GATEWAY_OUT_FILE:-${out_dir}/gateway/stdout.log}
-  gateway_args=${GATEWAY_ARGS:-}
+  pid_file=${!pid_file_var:-${run_dir}/${service}.pid}
+  out_file=${!out_file_var:-${out_dir}/${service}/stdout.log}
+  service_args=${!args_var:-}
 
   mkdir -p "$(dirname "${pid_file}")" "$(dirname "${out_file}")"
 
   if [ ! -x "${binary}" ]; then
-    echo "gateway binary not found: ${binary}" >&2
-    echo "build it first with: ./scripts/build.sh abe_gateway" >&2
+    echo "${service} binary not found: ${binary}" >&2
+    echo "build it first with: ./scripts/build.sh abe_${service}" >&2
     exit 1
   fi
 
   if [ ! -f "${config}" ]; then
-    echo "gateway config not found: ${config}" >&2
+    echo "${service} config not found: ${config}" >&2
     exit 1
   fi
 
   if is_running_pid_file "${pid_file}"; then
     pid=$(pid_file_pid "${pid_file}")
-    print_status gateway running "${pid}"
+    print_status "${service}" running "${pid}"
     return 0
   fi
 
   extra_args=()
-  if [ -n "${gateway_args}" ]; then
-    read -r -a extra_args <<< "${gateway_args}"
+  if [ -n "${service_args}" ]; then
+    read -r -a extra_args <<< "${service_args}"
   fi
 
   nohup "${binary}" --config "${config}" "${extra_args[@]}" >"${out_file}" 2>&1 &
@@ -194,13 +224,13 @@ start_gateway() {
   state=$(process_state "${pid}")
   if [ -z "${state}" ] || [ "${state#Z}" != "${state}" ]; then
     rm -f "${pid_file}"
-    echo "gateway failed to stay running; log=${out_file}" >&2
+    echo "${service} failed to stay running; log=${out_file}" >&2
     tail -40 "${out_file}" >&2 2>/dev/null || true
     exit 1
   fi
 
-  write_pid_file "${pid_file}" gateway "${pid}"
-  print_status gateway started "${pid}"
+  write_pid_file "${pid_file}" "${service}" "${pid}"
+  print_status "${service}" started "${pid}"
 }
 
 start_service() {
@@ -208,8 +238,8 @@ start_service() {
 
   service=$1
   case "${service}" in
-    gateway)
-      start_gateway
+    gateway|login|gatehub)
+      start_runtime_service "${service}"
       ;;
     *)
       echo "unknown service: ${service}" >&2
@@ -222,14 +252,14 @@ expand_services() {
   local service
 
   if [ "$#" -eq 0 ]; then
-    printf '%s\n' gateway
+    printf '%s\n' login gatehub gateway
     return 0
   fi
 
   for service in "$@"; do
     case "${service}" in
       all)
-        printf '%s\n' gateway
+        printf '%s\n' login gatehub gateway
         ;;
       *)
         printf '%s\n' "${service}"

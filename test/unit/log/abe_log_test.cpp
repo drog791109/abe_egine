@@ -1,18 +1,12 @@
 #include "abe_log.h"
 #include "abe_time.h"
 
+#include "../abe_test.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#define TEST_REQUIRE(expr) \
-    do { \
-        if (!(expr)) { \
-            fprintf(stderr, "%s:%d: requirement failed: %s\n", __FILE__, __LINE__, #expr); \
-            return 1; \
-        } \
-    } while (0)
 
 int main()
 {
@@ -117,5 +111,5 @@ int main()
     (void)rmdir(root_directory);
     (void)rmdir(nested_directory);
     (void)rmdir(test_directory);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }

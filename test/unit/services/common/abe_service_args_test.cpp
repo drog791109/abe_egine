@@ -1,17 +1,10 @@
 #include "abe_service_args.h"
 #include "abe_service_runtime.h"
 
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
+#include "../../abe_test.h"
 
-#define TEST_REQUIRE(expr) \
-    do { \
-        if (!(expr)) { \
-            fprintf(stderr, "%s:%d: requirement failed: %s\n", __FILE__, __LINE__, #expr); \
-            return 1; \
-        } \
-    } while (0)
+#include <stdint.h>
+#include <string.h>
 
 namespace service_common = abe::service::common;
 
@@ -41,7 +34,7 @@ static int test_parse_numbers(void)
     TEST_REQUIRE(value_i32 == -300);
     TEST_REQUIRE(service_common::service_parse_i32("-900", -840, 840, &value_i32) ==
         service_common::SERVICE_ARG_INVALID_VALUE);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_parse_option_table(void)
@@ -94,7 +87,7 @@ static int test_parse_option_table(void)
     TEST_REQUIRE(strcmp(host, "127.0.0.1") == 0);
     TEST_REQUIRE(port == 7000u);
     TEST_REQUIRE(server_id == 99u);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_parse_help(void)
@@ -105,7 +98,18 @@ static int test_parse_help(void)
 
     TEST_REQUIRE(service_common::service_parse_options(2, argv, NULL, 0u) ==
         service_common::SERVICE_ARG_HELP);
-    return 0;
+    return ABE_TEST_STATUS_OK;
+}
+
+static int test_service_arg_status_uses_common_error_codes(void)
+{
+    TEST_REQUIRE((int)service_common::SERVICE_ARG_OK == (int)ABE_OK);
+    TEST_REQUIRE(service_common::SERVICE_ARG_HELP == 1);
+    TEST_REQUIRE((int)service_common::SERVICE_ARG_INVALID_ARG == (int)ABE_INVALID_ARG);
+    TEST_REQUIRE((int)service_common::SERVICE_ARG_UNKNOWN_OPTION == (int)ABE_NOT_FOUND);
+    TEST_REQUIRE((int)service_common::SERVICE_ARG_MISSING_VALUE == (int)ABE_PARSE_ERROR);
+    TEST_REQUIRE((int)service_common::SERVICE_ARG_INVALID_VALUE == (int)ABE_BAD_VALUE);
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_runtime_stop_flag(void)
@@ -116,22 +120,25 @@ static int test_runtime_stop_flag(void)
     TEST_REQUIRE(service_common::stop_requested() == 1);
     service_common::reset_stop();
     TEST_REQUIRE(service_common::stop_requested() == 0);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 int main()
 {
-    if (test_parse_numbers() != 0) {
-        return 1;
+    if (test_parse_numbers() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_parse_option_table() != 0) {
-        return 1;
+    if (test_parse_option_table() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_parse_help() != 0) {
-        return 1;
+    if (test_parse_help() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_runtime_stop_flag() != 0) {
-        return 1;
+    if (test_service_arg_status_uses_common_error_codes() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    return 0;
+    if (test_runtime_stop_flag() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+    return ABE_TEST_STATUS_OK;
 }

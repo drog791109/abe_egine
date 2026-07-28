@@ -167,6 +167,7 @@ adapter 公共接口不得暴露 STL 容器、`std::function`、智能指针或�
 | 路径 | 放什么 | 不放什么 | 后续补全方向 |
 | --- | --- | --- | --- |
 | `logic/match/` | 匹配队列、匹配规则、组队/邀请/取消/超时状态机。 | 匹配服务 `main`、Redis/Kafka 具体客户端。 | 先补 `MatchTicket`、`MatchQueue`、`MatchRule`、`MatchProcessor`。 |
+| `logic/rpc/` | 基于 coroutine 的服务间 RPC endpoint、pending call、handler 分发和超时管理。 | TCP/Kafka/Redis 具体连接、服务进程入口。 | 服务层把真实传输接到 `RpcPacketSender`，逻辑层只处理请求/响应语义。 |
 | `logic/room/` | 房间 actor、成员状态、输入处理、tick 推进、广播裁剪、结算事件生成。 | TCP 监听入口、具体 DB/MQ 写入。 | 先补 `RoomActor`、`RoomState`、`RoomMessage`、`RoomRuntime`。 |
 | `logic/session/` | 玩家在线态、登录/心跳/断线/重连/踢人/顶号、连接绑定、房间绑定。 | Gateway 连接对象、具体 Redis 后端、服务进程入口。 | 单个 `Session` 处理收到的消息；`SessionManager` 只做索引、生命周期和过期清理。 |
 | `logic/settlement/` | 结算事件校验、幂等、奖励/战绩/任务结果生成、失败重试语义。 | 结算服务 `main`、MySQL/RabbitMQ/Kafka 具体调用。 | 先补 `SettlementProcessor`、`SettlementEvent`、`SettlementResult`、幂等存储接口。 |

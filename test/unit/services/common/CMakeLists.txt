@@ -48,6 +48,7 @@ set_target_properties(abe_player_store_proto_test
 target_link_libraries(abe_player_store_proto_test
     PRIVATE
         abe_proto_store
+        abe_engine_log
 )
 
 add_test(NAME abe_player_store_proto_test COMMAND abe_player_store_proto_test)

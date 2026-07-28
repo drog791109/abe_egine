@@ -54,6 +54,8 @@ server/
 - `services` 负责进程入口、配置加载、后端选择、依赖装配和服务生命周期，不承载复杂玩法逻辑。
 - `services/common` 放各服务进程都会复用的启动组件，例如 `ServiceRuntime`、命令行参数解析、配置/日志/DB 初始化和停止信号处理；不放具体服务业务规则。
 - `services/gateway` 负责把 `engine/adapters/net`、`logic/session` 和协议解码串起来；协议号和消息定义仍然以 `share/proto/client/protocol.proto` 为准。
+- `services/login` 负责登录请求编排、账号/昵称校验、注册策略、登录返回资料和短期 session token 发放。
+- `services/gatehub` 负责维护登录后的在线连接索引、断线重连窗口和同账号重复登录顶替策略。
 - `share/proto/client` 放客户端协议，`share/proto/internal` 放服务间协议。
 
 ## 错误码分层
@@ -132,6 +134,18 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 每个具体服务保留自己的 server 对象，并继承公共 `Service` 接口。入口里只创建 server，然后调用
 `run(argc, argv, server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionServer、RPC 客户端、缓存连接等。
 
+## 逻辑层 RPC
+
+`server/logic/rpc` 提供服务间调用的协程 RPC 核心：
+
+- `abe_logic_rpc` 是独立 target，使用 C++20 coroutine；这个标准只作用于 `logic/rpc`，不提升 `engine` 或其他 logic target 的编译标准。
+- RPC 复用 `engine/src/common/protocol/abe_protocol.h` 的 `abe_msg_header_t`，使用其中的 `rpc_id`、`source_server`、`target_server`、`route_type`、`flags` 和 `body_length` 承载服间请求/响应。
+- `RpcEndpoint` 不持有 TCP、Redis、Kafka 等具体连接，只通过 `RpcPacketSender` 回调发送已编码 packet；真实传输由 `services` 层装配。
+- 调用方使用 `co_await endpoint.call(request)` 等待 `RpcResponse`，每个 pending call 由 `rpc_id` 匹配响应。
+- 服务端通过 `set_handler(msg_id, handler, user_data)` 注册 handler；handler 可以同步 `send_response()`，也可以返回 `ABE_WOULD_BLOCK` 后异步响应。
+- `update(now_ms)` 负责检查 pending call 超时，超时后恢复挂起协程并返回 `ABE_TIMEOUT`。
+- 单向消息使用 `notify()`，不占用 pending call 槽位。
+
 ## 玩家数据存储
 
 玩家持久化数据按“固定查询列 + protobuf blob”落库：
@@ -176,31 +190,57 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - `MsgHeader.msg_id` 是消息 ID，`Body` 是 `share/proto/client/protocol.proto` 中定义的 `PB_<消息ID枚举名>` protobuf 消息。
 - gateway 只解固定头得到 `msg_id` 和 body，再转给 session handler；具体 protobuf 对象由业务 session 自己解析。
 
+## Login 和 GateHub 服务
+
+`server/services/login` 提供登录服务骨架和账号校验核心：
+
+- `abe_login` 是可启动进程，默认配置文件是 `bin/login.json`。
+- 账号只允许 ASCII 字母、数字、`_`、`-`、`.`，长度 4 到 32，并拒绝 SQL 关键字、注释符、引号、反斜杠等 SQL-like 输入。
+- 昵称要求合法 UTF-8，长度 2 到 16 个 codepoint，拒绝控制字符、SQL-like 输入和配置的脏字。
+- `login.dirty_words` 使用逗号、竖线、分号或换行分隔。
+- `login.unique_nickname=true` 时昵称全局唯一；重复昵称返回 `ERROR_CODE_AUTH_NICKNAME_EXISTS`。
+- 登录成功返回 `PB_LOGIN_ACCOUNT_INFO`、`PB_PLAYER_ID`、短期 `session_token` 和过期时间。
+- 重连请求带旧 `session_token`，校验通过后保留原 token 并切换到新 gateway/connection。
+- `login.replace_duplicate_login=true` 时同账号新登录会顶替旧连接；为 `false` 时返回 `ERROR_CODE_AUTH_DUPLICATE_LOGIN`。
+
+`server/services/gatehub` 提供独立的在线会话索引：
+
+- `abe_gatehub` 是可启动进程，默认配置文件是 `bin/gatehub.json`。
+- 维护 `uid -> session_id/session_token/gateway_id/connection_id`。
+- 连接断开后，如果 `gatehub.allow_reconnect=true`，会话进入 `GATEHUB_SESSION_RECONNECTING`，在 `gatehub.reconnect_grace_ms` 内允许用原 token 重新绑定。
+- 超过重连窗口或 session TTL 后，`update()` 会清理会话。
+- `gatehub.replace_duplicate_login=true` 时同账号新登录会返回旧连接信息，调用方据此踢掉旧连接；为 `false` 时拒绝新登录。
+
 构建和运行脚本：
 
 ```bash
 # 在项目根目录执行。Docker 包装脚本默认进入 deploy/docker 的 dev 容器。
 deploy/docker/build.sh          # 在 dev 容器内编译 abe_gateway
 deploy/docker/rebuild.sh        # 在 dev 容器内清理默认 build 目录后重新编译 abe_gateway
+deploy/docker/build.sh abe_login
+deploy/docker/build.sh abe_gatehub
 
 # 如果已经在容器 /workspace 内执行，使用当前环境脚本编译和起停服务。
 scripts/build.sh
 scripts/rebuild.sh
-scripts/services_start.sh gateway
-scripts/services_stop.sh gateway
+scripts/services_start.sh login gatehub gateway
+scripts/services_stop.sh login gatehub gateway
 ```
 
 Docker 包装脚本默认 build 目录为容器本地 `/tmp/abe_engine_build/engine`，避免共享目录并发写构建产物时出现
 截断文件；纯编译脚本 `scripts/build.sh` 和 `scripts/rebuild.sh` 默认 build 目录为 `build/engine`。
-gateway 可执行文件固定输出到 `bin/abe_gateway`，配置文件默认为 `bin/gate.json`。可以用 `BUILD_DIR`
-覆盖 build 目录，用 `GATEWAY_CONFIG` 覆盖 gateway 配置文件。
-服务启停脚本只负责启动已经编译好的二进制，不会自动编译代码。默认把 gateway pid 写到
-`bin/run/gateway.pid`，stdout/stderr 写到 `bin/logs/gateway/stdout.log`。
-停服脚本只删除 pid 文件，不删除日志。gateway 的 `bin/gate.json` 默认配置为 `log.output=daily`，
+gateway、login、gatehub 可执行文件分别输出到 `bin/abe_gateway`、`bin/abe_login`、`bin/abe_gatehub`；
+配置文件分别默认为 `bin/gate.json`、`bin/login.json`、`bin/gatehub.json`。可以用 `BUILD_DIR`
+覆盖 build 目录，用 `GATEWAY_CONFIG`、`LOGIN_CONFIG`、`GATEHUB_CONFIG` 覆盖配置文件。
+服务启停脚本只负责启动已经编译好的二进制，不会自动编译代码。默认 pid 写到
+`bin/run/<service>.pid`，stdout/stderr 写到 `bin/logs/<service>/stdout.log`。
+停服脚本只删除 pid 文件，不删除日志。三个服务的默认配置都使用 `log.output=daily`，
 所以业务日志写文件，不会打印到启服终端；实时查看可以直接 tail 日志文件。
 
 gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。命令行只保留公共 runtime 参数，
 用于切换配置文件或临时覆盖日志、数据库、Redis 等公共运行环境。
+gateway、login 和 gatehub 的 JSON 配置字段都直接通过 `abe_config.h` 的 `abe_config_get_*`
+接口按 path 读取；服务代码不维护自己的配置读取接口。
 
 公共命令行参数：
 
@@ -262,6 +302,22 @@ gateway.backlog
 gateway.max_packet_size
 gateway.server_id
 gateway.idle_ms
+login.max_accounts
+login.allow_register
+login.unique_nickname
+login.require_auth_token
+login.dirty_words
+login.default_region
+login.max_sessions
+login.allow_reconnect
+login.replace_duplicate_login
+login.reconnect_grace_ms
+login.session_ttl_ms
+gatehub.max_sessions
+gatehub.allow_reconnect
+gatehub.replace_duplicate_login
+gatehub.reconnect_grace_ms
+gatehub.session_ttl_ms
 ```
 
 ## 日志约定

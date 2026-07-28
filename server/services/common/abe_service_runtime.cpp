@@ -12,8 +12,8 @@
 #include "abe_redis_async.h"
 #endif
 
+#include <errno.h>
 #include <signal.h>
-#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -23,6 +23,7 @@ namespace common {
 
 enum {
     SERVICE_RUNTIME_DEFAULT_TICK_MS = 10u,
+    SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT = 4096u,
     SERVICE_RUNTIME_DEFAULT_MYSQL_PORT = 3306u,
     SERVICE_RUNTIME_DEFAULT_REDIS_PORT = 6379u
 };
@@ -32,7 +33,31 @@ static volatile sig_atomic_t g_stop_requested = 0;
 static void on_signal(int value)
 {
     (void)value;
-    request_stop();
+    g_stop_requested = 1;
+}
+
+static void install_signal_handler(
+    int signal_value,
+    const char* signal_name,
+    void (*handler)(int))
+{
+    struct sigaction action;
+
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    if (sigaction(signal_value, &action, NULL) != 0) {
+        ABE_LOG_WARN(
+            "service signal handler install failed signal=%s errno=%d",
+            signal_name == NULL ? "" : signal_name,
+            errno);
+    }
+}
+
+static void ignore_signal(int signal_value, const char* signal_name)
+{
+    install_signal_handler(signal_value, signal_name, SIG_IGN);
 }
 
 Options::Options(ServiceOption* options, uint32_t max_options)
@@ -152,22 +177,22 @@ int Options::add(const ServiceOption& option)
     return SERVICE_STATUS_OK;
 }
 
-int Options::exists(const char* name) const
+bool Options::exists(const char* name) const
 {
     uint32_t index;
 
     if (options_ == NULL || name == NULL) {
-        return 0;
+        return false;
     }
 
     index = 0u;
     while (index < count_) {
         if (options_[index].name != NULL && strcmp(options_[index].name, name) == 0) {
-            return 1;
+            return true;
         }
         ++index;
     }
-    return 0;
+    return false;
 }
 
 Service::~Service()
@@ -245,6 +270,29 @@ static int parse_log_level(
     return SERVICE_STATUS_INVALID_ARG;
 }
 
+static bool init_startup_log(const char* service_name)
+{
+    const char* name;
+
+    name = service_name == NULL || service_name[0] == '\0' ? "abe_service" : service_name;
+    if (abe::log::init_console(name) == abe::log::status_ok) {
+        return true;
+    }
+    if (strcmp(name, "abe_service") != 0 &&
+        abe::log::init_console("abe_service") == abe::log::status_ok) {
+        return true;
+    }
+    return false;
+}
+
+static void shutdown_log_if_ready(bool* log_ready)
+{
+    abe::log::shutdown();
+    if (log_ready != NULL) {
+        *log_ready = false;
+    }
+}
+
 static void set_runtime_defaults(
     const char* service_name,
     RuntimeConfig* config)
@@ -257,6 +305,7 @@ static void set_runtime_defaults(
 
     memset(config, 0, sizeof(*config));
     config->tick_ms = SERVICE_RUNTIME_DEFAULT_TICK_MS;
+    config->timer_max_count = SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT;
     config->log_output = "console";
     config->log_file = NULL;
     config->log_dir = "logs";
@@ -308,6 +357,17 @@ static int add_common_options(
         0u,
         1000u,
         &config->tick_ms);
+    if (rc != SERVICE_STATUS_OK) {
+        return rc;
+    }
+
+    rc = options.add_u32(
+        "--timer-max-count",
+        "count",
+        "service time wheel maximum timers, default 4096",
+        1u,
+        1048576u,
+        &config->timer_max_count);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -536,7 +596,10 @@ static int load_config_file(
         return SERVICE_STATUS_OK;
     }
     if (abe_config_load_json_file(runtime_config->config_path, out_config) != ABE_CONFIG_OK) {
-        fprintf(stderr, "service config load failed: %s\n", runtime_config->config_path);
+        ABE_LOG_ERROR(
+            "service config load failed path=%s status=%s",
+            runtime_config->config_path,
+            abe_status_name(SERVICE_STATUS_FAILED));
         return SERVICE_STATUS_FAILED;
     }
     return SERVICE_STATUS_OK;
@@ -559,7 +622,10 @@ static int read_config_string(
         return SERVICE_STATUS_OK;
     }
     if (rc != ABE_CONFIG_OK) {
-        fprintf(stderr, "invalid string config value: %s\n", path);
+        ABE_LOG_ERROR(
+            "invalid string config value path=%s status=%s",
+            path,
+            abe_status_name(SERVICE_STATUS_INVALID_ARG));
         return SERVICE_STATUS_INVALID_ARG;
     }
 
@@ -586,7 +652,10 @@ static int read_config_u32(
         return SERVICE_STATUS_OK;
     }
     if (rc != ABE_CONFIG_OK || value < min_value || value > max_value) {
-        fprintf(stderr, "invalid unsigned config value: %s\n", path);
+        ABE_LOG_ERROR(
+            "invalid unsigned config value path=%s status=%s",
+            path,
+            abe_status_name(SERVICE_STATUS_INVALID_ARG));
         return SERVICE_STATUS_INVALID_ARG;
     }
 
@@ -613,7 +682,10 @@ static int read_config_i32(
         return SERVICE_STATUS_OK;
     }
     if (rc != ABE_CONFIG_OK || value < min_value || value > max_value) {
-        fprintf(stderr, "invalid signed config value: %s\n", path);
+        ABE_LOG_ERROR(
+            "invalid signed config value path=%s status=%s",
+            path,
+            abe_status_name(SERVICE_STATUS_INVALID_ARG));
         return SERVICE_STATUS_INVALID_ARG;
     }
 
@@ -640,7 +712,10 @@ static int read_config_u64(
         return SERVICE_STATUS_OK;
     }
     if (rc != ABE_CONFIG_OK || value < min_value || value > max_value) {
-        fprintf(stderr, "invalid unsigned config value: %s\n", path);
+        ABE_LOG_ERROR(
+            "invalid unsigned config value path=%s status=%s",
+            path,
+            abe_status_name(SERVICE_STATUS_INVALID_ARG));
         return SERVICE_STATUS_INVALID_ARG;
     }
 
@@ -660,6 +735,15 @@ static int apply_runtime_config(
 
     rc = read_config_u32(
         config, "runtime.tick_ms", 0u, 1000u, &runtime_config->tick_ms);
+    if (rc != SERVICE_STATUS_OK) {
+        return rc;
+    }
+    rc = read_config_u32(
+        config,
+        "runtime.timer_max_count",
+        1u,
+        1048576u,
+        &runtime_config->timer_max_count);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -806,7 +890,9 @@ static int init_log(
         rc = abe::log::init_console(service_name);
     } else if (strcmp(log_output, "file") == 0) {
         if (config->log_file == NULL || config->log_file[0] == '\0') {
-            fprintf(stderr, "service log file path is required when log-output=file\n");
+            ABE_LOG_ERROR(
+                "service log file path is required when log-output=file status=%s",
+                abe_status_name(SERVICE_STATUS_INVALID_ARG));
             return SERVICE_STATUS_INVALID_ARG;
         }
         rc = abe::log::init_file(service_name, config->log_file, false);
@@ -816,24 +902,36 @@ static int init_log(
             config->log_dir == NULL ? "logs" : config->log_dir,
             config->log_utc_offset_minutes);
     } else {
-        fprintf(stderr, "unknown log output: %s\n", log_output);
+        ABE_LOG_ERROR(
+            "unknown log output value=%s status=%s",
+            log_output,
+            abe_status_name(SERVICE_STATUS_INVALID_ARG));
         return SERVICE_STATUS_INVALID_ARG;
     }
 
     if (rc != abe::log::status_ok) {
-        fprintf(stderr, "service log init failed: %d\n", rc);
+        (void)init_startup_log(service_name);
+        ABE_LOG_ERROR(
+            "service log init failed rc=%d status=%s",
+            rc,
+            abe_status_name(SERVICE_STATUS_FAILED));
         return SERVICE_STATUS_FAILED;
     }
 
     rc = parse_log_level(config->log_level, &log_level);
     if (rc != SERVICE_STATUS_OK) {
-        fprintf(stderr, "unknown log level: %s\n",
-            config->log_level == NULL ? "" : config->log_level);
+        ABE_LOG_ERROR(
+            "unknown log level value=%s status=%s",
+            config->log_level == NULL ? "" : config->log_level,
+            abe_status_name(SERVICE_STATUS_INVALID_ARG));
         return SERVICE_STATUS_INVALID_ARG;
     }
     rc = abe::log::set_level(log_level);
     if (rc != abe::log::status_ok) {
-        fprintf(stderr, "service log level init failed: %d\n", rc);
+        ABE_LOG_ERROR(
+            "service log level init failed rc=%d status=%s",
+            rc,
+            abe_status_name(SERVICE_STATUS_FAILED));
         return SERVICE_STATUS_FAILED;
     }
     return SERVICE_STATUS_OK;
@@ -943,6 +1041,45 @@ static int init_redis(
 #endif
 }
 
+static int init_time_wheel(
+    const RuntimeConfig* config,
+    abe_time_wheel_t** out_time_wheel)
+{
+    abe_time_wheel_config_t wheel_config;
+    uint32_t timer_max_count;
+    int rc;
+
+    if (out_time_wheel == NULL) {
+        return SERVICE_STATUS_INVALID_ARG;
+    }
+    *out_time_wheel = NULL;
+
+    timer_max_count = config == NULL || config->timer_max_count == 0u
+        ? SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT
+        : config->timer_max_count;
+
+    memset(&wheel_config, 0, sizeof(wheel_config));
+    wheel_config.tick_ms = config == NULL
+        ? SERVICE_RUNTIME_DEFAULT_TICK_MS
+        : config->tick_ms;
+    wheel_config.max_timer_count = timer_max_count;
+    wheel_config.name = "service_time_wheel";
+
+    rc = abe_time_wheel_create_mono(&wheel_config, out_time_wheel);
+    if (rc != ABE_TIMER_OK) {
+        ABE_LOG_ERROR("service time wheel init failed rc=%d status=%s",
+            rc,
+            abe_status_name(rc));
+        return rc;
+    }
+
+    ABE_LOG_INFO(
+        "service time wheel started tick_ms=%u max_timer_count=%u",
+        wheel_config.tick_ms == 0u ? SERVICE_RUNTIME_DEFAULT_TICK_MS : wheel_config.tick_ms,
+        timer_max_count);
+    return SERVICE_STATUS_OK;
+}
+
 static int run_loop(
     Context* context,
     Service& service,
@@ -954,12 +1091,24 @@ static int run_loop(
     reset_stop();
     install_stop_signal_handlers();
 
-    result = 0;
+    result = SERVICE_STATUS_OK;
     while (!stop_requested()) {
+        uint32_t timer_fired_count;
+
         rc = context->loop->update();
         if (rc != ABE_NET_OK) {
             ABE_LOG_ERROR("service net update failed rc=%d", rc);
-            result = 1;
+            result = rc;
+            break;
+        }
+
+        timer_fired_count = 0u;
+        rc = abe_time_wheel_update_mono(context->time_wheel, &timer_fired_count);
+        if (rc != ABE_TIMER_OK) {
+            ABE_LOG_ERROR("service time wheel update failed rc=%d status=%s",
+                rc,
+                abe_status_name(rc));
+            result = rc;
             break;
         }
 
@@ -968,7 +1117,7 @@ static int run_loop(
             rc = abe_db_mysql_async_update(context->mysql, 0u, NULL);
             if (rc != ABE_DB_OK) {
                 ABE_LOG_ERROR("service mysql async update failed rc=%d", rc);
-                result = 1;
+                result = rc;
                 break;
             }
         }
@@ -981,7 +1130,7 @@ static int run_loop(
                 ABE_LOG_ERROR("service redis async update failed rc=%d error=%s",
                     rc,
                     abe_redis_async_last_error(context->redis));
-                result = 1;
+                result = rc;
                 break;
             }
         }
@@ -990,7 +1139,7 @@ static int run_loop(
         rc = service.update(abe_time_mono_ms());
         if (rc != SERVICE_STATUS_OK) {
             ABE_LOG_ERROR("service update failed rc=%d", rc);
-            result = 1;
+            result = rc;
             break;
         }
 
@@ -1033,6 +1182,17 @@ static int parse_config_option(
     return SERVICE_ARG_OK;
 }
 
+static void log_option_registration_failed(
+    const char* service_name,
+    int rc)
+{
+    ABE_LOG_ERROR(
+        "service option registration failed service=%s rc=%d status=%s",
+        service_name == NULL ? "" : service_name,
+        rc,
+        abe_status_name(rc));
+}
+
 int run(int argc, char** argv, Service& service)
 {
     RuntimeConfig runtime_config;
@@ -1043,10 +1203,13 @@ int run(int argc, char** argv, Service& service)
     abe_db_mysql_async_t* mysql;
     abe_redis_async_t* redis;
     abe_snowflake_t* id_generator;
+    abe_time_wheel_t* time_wheel;
     abe::adapter::net::Loop loop;
     const char* service_name;
     int loop_ready;
+    int time_wheel_ready;
     int service_ready;
+    bool log_ready;
     int rc;
     int result;
 
@@ -1054,6 +1217,7 @@ int run(int argc, char** argv, Service& service)
     if (service_name == NULL || service_name[0] == '\0') {
         service_name = "abe_service";
     }
+    log_ready = init_startup_log(service_name);
 
     set_runtime_defaults(service_name, &runtime_config);
     runtime_config.config_path = service.config_path();
@@ -1065,53 +1229,65 @@ int run(int argc, char** argv, Service& service)
         rc = service.options(option_list);
     }
     if (rc != SERVICE_STATUS_OK) {
-        fprintf(stderr, "service option registration failed: %d\n", rc);
-        return 1;
+        log_option_registration_failed(service_name, rc);
+        shutdown_log_if_ready(&log_ready);
+        return rc;
     }
 
     rc = parse_config_option(argc, argv, &runtime_config);
     if (rc == SERVICE_ARG_HELP) {
-        service_print_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
-        return 0;
+        service_log_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
+        shutdown_log_if_ready(&log_ready);
+        return SERVICE_STATUS_OK;
     }
     if (rc != SERVICE_ARG_OK) {
-        service_print_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
-        return 1;
+        ABE_LOG_ERROR(
+            "service config option parse failed rc=%d status=%s",
+            rc,
+            abe_status_name(rc));
+        service_log_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
+        shutdown_log_if_ready(&log_ready);
+        return rc;
     }
 
     config = NULL;
     rc = load_config_file(&runtime_config, &config);
     if (rc != SERVICE_STATUS_OK) {
-        return 1;
+        shutdown_log_if_ready(&log_ready);
+        return rc;
     }
     rc = apply_runtime_config(&runtime_config, config);
     if (rc != SERVICE_STATUS_OK) {
         if (config != NULL) {
             abe_config_destroy(config);
         }
-        return 1;
+        shutdown_log_if_ready(&log_ready);
+        return rc;
     }
     rc = service.load_config(config);
     if (rc != SERVICE_STATUS_OK) {
         if (config != NULL) {
             abe_config_destroy(config);
         }
-        return 1;
+        shutdown_log_if_ready(&log_ready);
+        return rc;
     }
     rc = service_parse_options(argc, argv, option_list.data(), option_list.count());
     if (rc == SERVICE_ARG_HELP) {
-        service_print_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
+        service_log_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
         if (config != NULL) {
             abe_config_destroy(config);
         }
-        return 0;
+        shutdown_log_if_ready(&log_ready);
+        return SERVICE_STATUS_OK;
     }
     if (rc != SERVICE_ARG_OK) {
-        service_print_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
+        service_log_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
         if (config != NULL) {
             abe_config_destroy(config);
         }
-        return 1;
+        shutdown_log_if_ready(&log_ready);
+        return rc;
     }
 
     rc = init_log(service_name, &runtime_config);
@@ -1119,7 +1295,8 @@ int run(int argc, char** argv, Service& service)
         if (config != NULL) {
             abe_config_destroy(config);
         }
-        return 1;
+        shutdown_log_if_ready(&log_ready);
+        return rc;
     }
 
     id_generator = NULL;
@@ -1130,7 +1307,7 @@ int run(int argc, char** argv, Service& service)
         if (config != NULL) {
             abe_config_destroy(config);
         }
-        return 1;
+        return rc;
     }
 
     mysql = NULL;
@@ -1141,7 +1318,7 @@ int run(int argc, char** argv, Service& service)
         if (config != NULL) {
             abe_config_destroy(config);
         }
-        return 1;
+        return rc;
     }
 
     redis = NULL;
@@ -1159,38 +1336,50 @@ int run(int argc, char** argv, Service& service)
         if (config != NULL) {
             abe_config_destroy(config);
         }
-        return 1;
+        return rc;
     }
 
     loop_ready = 0;
+    time_wheel_ready = 0;
     service_ready = 0;
+    time_wheel = NULL;
     memset(&context, 0, sizeof(context));
     rc = loop.create();
     if (rc != ABE_NET_OK) {
         ABE_LOG_ERROR("service loop create failed rc=%d", rc);
-        result = 1;
+        result = rc;
     } else {
         loop_ready = 1;
-        context.loop = &loop;
-        context.config = config;
-        context.mysql = mysql;
-        context.redis = redis;
-        context.id_generator = id_generator;
-        context.runtime = &runtime_config;
-
-        rc = service.init(context);
+        rc = init_time_wheel(&runtime_config, &time_wheel);
         if (rc != SERVICE_STATUS_OK) {
-            ABE_LOG_ERROR("service init failed rc=%d", rc);
-            result = 1;
+            result = rc;
         } else {
-            service_ready = 1;
-            ABE_LOG_INFO("service started name=%s", service_name);
-            result = run_loop(&context, service, runtime_config.tick_ms);
+            time_wheel_ready = 1;
+            context.loop = &loop;
+            context.time_wheel = time_wheel;
+            context.config = config;
+            context.mysql = mysql;
+            context.redis = redis;
+            context.id_generator = id_generator;
+            context.runtime = &runtime_config;
+
+            rc = service.init(context);
+            if (rc != SERVICE_STATUS_OK) {
+                ABE_LOG_ERROR("service init failed rc=%d", rc);
+                result = rc;
+            } else {
+                service_ready = 1;
+                ABE_LOG_INFO("service started name=%s", service_name);
+                result = run_loop(&context, service, runtime_config.tick_ms);
+            }
         }
     }
 
     if (service_ready) {
         service.close(abe_time_mono_ms());
+    }
+    if (time_wheel_ready) {
+        abe_time_wheel_destroy(time_wheel);
     }
     if (loop_ready) {
         loop.destroy();
@@ -1235,8 +1424,11 @@ int stop_requested()
 
 void install_stop_signal_handlers()
 {
-    signal(SIGINT, on_signal);
-    signal(SIGTERM, on_signal);
+    install_signal_handler(SIGINT, "SIGINT", on_signal);
+    install_signal_handler(SIGTERM, "SIGTERM", on_signal);
+    install_signal_handler(SIGHUP, "SIGHUP", on_signal);
+    install_signal_handler(SIGQUIT, "SIGQUIT", on_signal);
+    ignore_signal(SIGPIPE, "SIGPIPE");
 }
 
 } /* namespace common */

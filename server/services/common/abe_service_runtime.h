@@ -3,8 +3,10 @@
 
 #include "abe_config.h"
 #include "abe_db.h"
+#include "abe_error.h"
 #include "abe_net_link.h"
 #include "abe_service_args.h"
+#include "abe_time_wheel.h"
 
 #include <stdint.h>
 
@@ -21,16 +23,17 @@ enum {
 };
 
 enum ServiceStatus {
-    SERVICE_STATUS_OK = 0,
-    SERVICE_STATUS_INVALID_ARG = -1,
-    SERVICE_STATUS_NO_SLOT = -2,
-    SERVICE_STATUS_DUPLICATE = -3,
-    SERVICE_STATUS_FAILED = -4
+    SERVICE_STATUS_OK = ABE_OK,
+    SERVICE_STATUS_INVALID_ARG = ABE_INVALID_ARG,
+    SERVICE_STATUS_NO_SLOT = ABE_NO_SLOT,
+    SERVICE_STATUS_DUPLICATE = ABE_ALREADY_EXISTS,
+    SERVICE_STATUS_FAILED = ABE_ERROR
 };
 
 struct RuntimeConfig {
     const char* config_path;
     uint32_t tick_ms;
+    uint32_t timer_max_count;
 
     const char* log_output;
     const char* log_file;
@@ -61,6 +64,7 @@ struct RuntimeConfig {
 
 struct Context {
     abe::adapter::net::Loop* loop;
+    abe_time_wheel_t* time_wheel;
     const abe_config_t* config;
     abe_db_mysql_async_t* mysql;
     abe_redis_async_t* redis;
@@ -107,7 +111,7 @@ private:
     Options& operator=(const Options&);
 
     int add(const ServiceOption& option);
-    int exists(const char* name) const;
+    bool exists(const char* name) const;
 
     ServiceOption* options_;
     uint32_t max_;

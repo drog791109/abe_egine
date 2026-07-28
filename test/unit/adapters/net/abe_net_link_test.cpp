@@ -1,20 +1,13 @@
 #include "abe_net_link.h"
 #include "abe_net_server.h"
 
+#include "../../abe_test.h"
+
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-
-#define TEST_REQUIRE(expr) \
-    do { \
-        if (!(expr)) { \
-            fprintf(stderr, "%s:%d: requirement failed: %s\n", __FILE__, __LINE__, #expr); \
-            return 1; \
-        } \
-    } while (0)
 
 namespace net = abe::adapter::net;
 
@@ -380,7 +373,7 @@ static int test_invalid_args(void)
     TEST_REQUIRE(udp.bind(&loop, NULL) == ABE_NET_INVALID_ARG);
     loop.destroy();
 
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int start_listener(runtime_state* state, uint16_t port)
@@ -416,8 +409,8 @@ static int test_tcp_udp_runtime(void)
     rc = start_listener(&state, tcp_port);
     if (rc != ABE_NET_OK) {
         cleanup_runtime(&state);
-        fprintf(stderr, "failed to listen on tcp port %u\n", (unsigned int)tcp_port);
-        return 1;
+        ABE_LOG_ERROR("failed to listen on tcp port=%u", (unsigned int)tcp_port);
+        return ABE_TEST_STATUS_FAILED;
     }
 
     state.client.set_user_data(&state);
@@ -446,7 +439,7 @@ static int test_tcp_udp_runtime(void)
     TEST_REQUIRE(state.udp_got);
 
     cleanup_runtime(&state);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_tcp_server_client_runtime(void)
@@ -475,8 +468,8 @@ static int test_tcp_server_client_runtime(void)
     rc = state.server.init(&state.loop, &server_config);
     if (rc != ABE_NET_OK) {
         cleanup_server_client(&state);
-        fprintf(stderr, "failed to init tcp server on port %u\n", (unsigned int)tcp_port);
-        return 1;
+        ABE_LOG_ERROR("failed to init tcp server port=%u", (unsigned int)tcp_port);
+        return ABE_TEST_STATUS_FAILED;
     }
 
     memset(&client_config, 0, sizeof(client_config));
@@ -511,7 +504,7 @@ static int test_tcp_server_client_runtime(void)
     TEST_REQUIRE(state.disconnect_got);
 
     cleanup_server_client(&state);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 int main(void)
@@ -519,15 +512,15 @@ int main(void)
     signal(SIGALRM, SIG_DFL);
     alarm(10u);
 
-    if (test_invalid_args() != 0) {
-        return 1;
+    if (test_invalid_args() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_tcp_udp_runtime() != 0) {
-        return 1;
+    if (test_tcp_udp_runtime() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_tcp_server_client_runtime() != 0) {
-        return 1;
+    if (test_tcp_server_client_runtime() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
 
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }

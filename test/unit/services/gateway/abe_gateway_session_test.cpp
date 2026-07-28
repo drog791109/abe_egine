@@ -2,17 +2,10 @@
 #include "abe_session_server.h"
 #include "protocol.pb.h"
 
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
+#include "../../abe_test.h"
 
-#define TEST_REQUIRE(expr) \
-    do { \
-        if (!(expr)) { \
-            fprintf(stderr, "%s:%d: requirement failed: %s\n", __FILE__, __LINE__, #expr); \
-            return 1; \
-        } \
-    } while (0)
+#include <stdint.h>
+#include <string.h>
 
 namespace gateway = abe::service::gateway;
 namespace net = abe::adapter::net;
@@ -97,13 +90,13 @@ static int test_gateway_session_routes_message(void)
     TEST_REQUIRE(slots[0].active() == 0);
     TEST_REQUIRE(slots[0].link() == NULL);
     TEST_REQUIRE(slots[0].link_id() == 0u);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 int main()
 {
-    if (test_gateway_session_routes_message() != 0) {
-        return 1;
+    if (test_gateway_session_routes_message() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }

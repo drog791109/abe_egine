@@ -75,6 +75,31 @@ code, build files, tests, or architecture documentation.
 - When changing engine interfaces, verify C and/or C++11 header compatibility
   as appropriate and keep third-party headers out of public contracts.
 
+## Runtime Logging And Error Codes
+
+- Logic and services runtime code must report runtime failures through the
+  project logging wrapper and `ABE_LOG_*` macros. Do not write runtime errors
+  directly with `fprintf(stderr, ...)`, `std::cerr`, or `perror`.
+- Startup paths that can fail before the configured logger is ready should use a
+  temporary console logger or a shared runtime helper before emitting
+  `ABE_LOG_*` messages. Keep CLI usage/help output on the logging path as
+  informational records instead of printing directly to stdout or stderr.
+- Logic and services infrastructure status enums must map to the unified
+  `abe_status_t` values from `abe_error.h` or existing service status aliases.
+  Do not introduce ad hoc negative error numbers. Client-facing protocol or
+  business response enums may remain separate when they represent wire/API
+  semantics rather than infrastructure failures.
+- Runtime functions that return `int` status values must return unified
+  `ABE_*`, `SERVICE_STATUS_*`, or mapped domain status codes. Do not use bare
+  `return 1` or `result = 1` to mean failure.
+- Test entry points and test helpers must also use named status enums or
+  constants for success and failure returns. Do not write bare `return 0` or
+  `return 1` in test control flow.
+- C++ test assertion helpers must log failures through the project logging
+  wrapper and `ABE_LOG_*` macros instead of printing with `fprintf(stderr, ...)`.
+- Internal predicate helpers should return `bool` with `true`/`false` instead
+  of using `int` with `0`/`1`, unless the API must remain C-compatible.
+
 ## Shell Script Rules
 
 - Docker/Compose environment control scripts and container-aware wrappers belong

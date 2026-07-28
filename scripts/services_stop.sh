@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Run example:
-#   ./scripts/services_stop.sh gateway
+#   ./scripts/services_stop.sh login gatehub gateway
 # Command description:
 #   Stop one or more project service processes in the current environment.
 #
@@ -10,16 +10,20 @@
 #
 # Services:
 #   gateway    Stop the gateway service.
-#   all        Stop all default services. Currently: gateway.
+#   login      Stop the login service.
+#   gatehub    Stop the gatehub service.
+#   all        Stop all default services. Currently: login, gatehub, gateway.
 #
 # Defaults:
-#   service  gateway
+#   service  login gatehub gateway
 #   RUN_DIR  bin/run
 #
 # Environment:
 #   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
 #   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: bin/logs/gateway/stdout.log
 #   GATEWAY_LOG_DIR   Gateway daily log root. Default: bin/logs/gateway
+#   LOGIN_PID_FILE    Login pid file. Default: ${RUN_DIR}/login.pid
+#   GATEHUB_PID_FILE  Gatehub pid file. Default: ${RUN_DIR}/gatehub.pid
 #
 # Note:
 #   This script does not stop Docker containers. It stops service processes in
@@ -38,16 +42,20 @@ Usage:
 
 Services:
   gateway    Stop the gateway service.
-  all        Stop all default services. Currently: gateway.
+  login      Stop the login service.
+  gatehub    Stop the gatehub service.
+  all        Stop all default services. Currently: login, gatehub, gateway.
 
 Defaults:
-  service  gateway
+  service  login gatehub gateway
   RUN_DIR  bin/run
 
 Environment:
   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: bin/logs/gateway/stdout.log
   GATEWAY_LOG_DIR   Gateway daily log root. Default: bin/logs/gateway
+  LOGIN_PID_FILE    Login pid file. Default: ${RUN_DIR}/login.pid
+  GATEHUB_PID_FILE  Gatehub pid file. Default: ${RUN_DIR}/gatehub.pid
 
 This script does not stop Docker containers. It stops service processes in the
 current runtime environment; run it in the same environment that started them.
@@ -164,12 +172,15 @@ stop_pid_file() {
   print_status "${service}" stopped "${pid}"
 }
 
-stop_gateway() {
-  local run_dir pid_file
+stop_runtime_service() {
+  local service service_key run_dir pid_file_var pid_file
 
+  service=$1
+  service_key=$(printf '%s' "${service}" | tr '[:lower:]' '[:upper:]')
   run_dir=${RUN_DIR:-bin/run}
-  pid_file=${GATEWAY_PID_FILE:-${run_dir}/gateway.pid}
-  stop_pid_file gateway "${pid_file}"
+  pid_file_var=${service_key}_PID_FILE
+  pid_file=${!pid_file_var:-${run_dir}/${service}.pid}
+  stop_pid_file "${service}" "${pid_file}"
 }
 
 stop_service() {
@@ -177,8 +188,8 @@ stop_service() {
 
   service=$1
   case "${service}" in
-    gateway)
-      stop_gateway
+    gateway|login|gatehub)
+      stop_runtime_service "${service}"
       ;;
     *)
       echo "unknown service: ${service}" >&2
@@ -191,14 +202,14 @@ expand_services() {
   local service
 
   if [ "$#" -eq 0 ]; then
-    printf '%s\n' gateway
+    printf '%s\n' login gatehub gateway
     return 0
   fi
 
   for service in "$@"; do
     case "${service}" in
       all)
-        printf '%s\n' gateway
+        printf '%s\n' login gatehub gateway
         ;;
       *)
         printf '%s\n' "${service}"

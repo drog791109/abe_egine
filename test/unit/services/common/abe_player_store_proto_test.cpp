@@ -1,15 +1,8 @@
 #include "player_store.pb.h"
 
-#include <stdio.h>
-#include <string>
+#include "../../abe_test.h"
 
-#define TEST_REQUIRE(expr) \
-    do { \
-        if (!(expr)) { \
-            fprintf(stderr, "%s:%d: requirement failed: %s\n", __FILE__, __LINE__, #expr); \
-            return 1; \
-        } \
-    } while (0)
+#include <string>
 
 namespace store = abe::proto::store;
 
@@ -46,7 +39,7 @@ static int test_player_round_trip(void)
     TEST_REQUIRE(copy.profile().level() == 12u);
     TEST_REQUIRE(copy.wallet().gold() == 3000);
     TEST_REQUIRE(copy.room_id() == 70001u);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_bag_groups_items(void)
@@ -64,7 +57,7 @@ static int test_bag_groups_items(void)
     TEST_REQUIRE(bag.equipment_list_size() == 1);
     TEST_REQUIRE(bag.appearance_list_size() == 1);
     TEST_REQUIRE(bag.capacity() == 200u);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_task_and_mail_state(void)
@@ -93,19 +86,19 @@ static int test_task_and_mail_state(void)
     TEST_REQUIRE(mail.attachment_list_size() == 1);
     TEST_REQUIRE(mail_list.mail_list_size() == 1);
     TEST_REQUIRE(mail_list.mail_list(0).mail_id() == 80001u);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 int main()
 {
-    if (test_player_round_trip() != 0) {
-        return 1;
+    if (test_player_round_trip() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_bag_groups_items() != 0) {
-        return 1;
+    if (test_bag_groups_items() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_task_and_mail_state() != 0) {
-        return 1;
+    if (test_task_and_mail_state() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }

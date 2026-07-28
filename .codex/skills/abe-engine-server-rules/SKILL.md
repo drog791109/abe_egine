@@ -103,6 +103,33 @@ Follow these project choices:
 - **Logging**: wrap native C++ spdlog directly in `engine/src/log` with simple C++11 functions and `ABE_LOG_*` macros. Use `base/time` real time for timestamps and daily log directories. Do not expose spdlog or STL types, and do not add a C bridge unless C callers require it.
 - **Database**: expose database access through C-style handles, query/transaction functions, result objects, and async callbacks. Put MySQL/PostgreSQL/Redis implementations in `backends`; put optional C++ RAII wrappers in `adapters`.
 
+## Runtime Logging And Error Codes
+
+Apply these rules to logic and services runtime code:
+
+- Report runtime failures through the project logging wrapper and `ABE_LOG_*`
+  macros. Do not write runtime errors directly with `fprintf(stderr, ...)`,
+  `std::cerr`, or `perror`.
+- Startup paths that can fail before the configured logger is ready should use a
+  temporary console logger or a shared runtime helper before emitting
+  `ABE_LOG_*` messages. Keep CLI usage/help output on the logging path as
+  informational records instead of printing directly to stdout or stderr.
+- Infrastructure and service status enums must map to the unified
+  `abe_status_t` values from `abe_error.h` or existing service status aliases.
+  Do not introduce ad hoc negative error numbers.
+- Runtime functions that return `int` status values must return unified
+  `ABE_*`, `SERVICE_STATUS_*`, or mapped domain status codes. Do not use bare
+  `return 1` or `result = 1` to mean failure.
+- Test entry points and test helpers must also use named status enums or
+  constants for success and failure returns. Do not write bare `return 0` or
+  `return 1` in test control flow.
+- C++ test assertion helpers must log failures through the project logging
+  wrapper and `ABE_LOG_*` macros instead of printing with `fprintf(stderr, ...)`.
+- Internal predicate helpers should return `bool` with `true`/`false` instead
+  of using `int` with `0`/`1`, unless the API must remain C-compatible.
+- Client-facing protocol or business response enums may remain separate when
+  they represent wire/API semantics rather than infrastructure failures.
+
 ## C++ Dependency Constraint
 
 For a native C++ library such as spdlog:
@@ -161,6 +188,9 @@ Before finishing code or docs work, check:
 - Did a new API make ownership, lifetime, and error handling obvious?
 - Did networking stay libevent-based?
 - Did the logging wrapper stay simple and hide spdlog/STL types?
+- Did logic/services runtime errors and CLI usage/help output use `ABE_LOG_*`
+  instead of direct stdout/stderr, and did infrastructure/service statuses map
+  to `abe_error.h` values without bare `return 1` failure paths?
 - Did database access stay behind the C database interface?
 - Did logic-layer code remain free to use C++11+ without forcing that standard onto base infrastructure?
 - Did every generated or modified `*.sh` file include a top-of-file run example and command description?

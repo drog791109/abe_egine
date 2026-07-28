@@ -63,6 +63,13 @@ enum ErrorCode {
   ERROR_CODE_AUTH_FAILED = 20000;
   ERROR_CODE_AUTH_TOKEN_EXPIRED = 20001;
   ERROR_CODE_AUTH_DUPLICATE_LOGIN = 20002;
+  ERROR_CODE_AUTH_INVALID_ACCOUNT = 20003;
+  ERROR_CODE_AUTH_INVALID_NICKNAME = 20004;
+  ERROR_CODE_AUTH_ACCOUNT_EXISTS = 20005;
+  ERROR_CODE_AUTH_NICKNAME_EXISTS = 20006;
+  ERROR_CODE_AUTH_SQL_PATTERN = 20007;
+  ERROR_CODE_AUTH_DIRTY_WORD = 20008;
+  ERROR_CODE_AUTH_RECONNECT_FAILED = 20009;
 
   ERROR_CODE_SESSION_NOT_FOUND = 30000;
   ERROR_CODE_SESSION_EXPIRED = 30001;
@@ -101,6 +108,18 @@ message PB_RESULT {
 message PB_PLAYER_ID {
   uint64 uid = 1;
   string open_id = 2;
+}
+
+message PB_LOGIN_ACCOUNT_INFO {
+  PB_PLAYER_ID player = 1;
+  string account_name = 2;
+  string nickname = 3;
+  uint32 sex = 4;
+  uint32 avatar_id = 5;
+  uint32 level = 6;
+  string region = 7;
+  string device_id = 8;
+  string client_version = 9;
 }
 
 message PB_ROOM_ID {
@@ -191,6 +210,8 @@ message PB_CS_LOGIN_REQ {
   string token = 3;
   string device_id = 4;
   string client_version = 5;
+  string nickname = 6;
+  string session_token = 7;
 }
 
 message PB_SC_LOGIN_RESP {
@@ -199,6 +220,7 @@ message PB_SC_LOGIN_RESP {
   PB_PLAYER_ID player = 3;
   string session_token = 4;
   uint64 session_expire_time_ms = 5;
+  PB_LOGIN_ACCOUNT_INFO account_info = 6;
 }
 
 message PB_CS_HEARTBEAT {

@@ -2,16 +2,9 @@
 
 #include "protocol.pb.h"
 
-#include <stdio.h>
-#include <string.h>
+#include "../../abe_test.h"
 
-#define TEST_REQUIRE(expr) \
-    do { \
-        if (!(expr)) { \
-            fprintf(stderr, "%s:%d: requirement failed: %s\n", __FILE__, __LINE__, #expr); \
-            return 1; \
-        } \
-    } while (0)
+#include <string.h>
 
 namespace session = abe::logic::session;
 namespace proto = abe::proto::client;
@@ -149,7 +142,7 @@ static int test_server_accepts_derived_sessions(void)
     TEST_REQUIRE(slots[0].close_count == 1u);
     TEST_REQUIRE(slots[0].reset_count == 3u);
     TEST_REQUIRE(slots[0].last_link_user_data == NULL);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_server_owns_link_sessions(void)
@@ -202,7 +195,7 @@ static int test_server_owns_link_sessions(void)
     TEST_REQUIRE(first != NULL);
     TEST_REQUIRE(first->link_id() == 1003u);
     TEST_REQUIRE(server.active_count() == 2u);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_session_message_handlers(void)
@@ -266,7 +259,7 @@ static int test_session_message_handlers(void)
     TEST_REQUIRE(send_counter.last_size == 3u);
     TEST_REQUIRE(send_counter.last_link_id == 2001u);
     TEST_REQUIRE(current->last_send_ms() == 1500u);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 static int test_session_state_and_idle_update(void)
@@ -319,22 +312,22 @@ static int test_session_state_and_idle_update(void)
     TEST_REQUIRE(server.active_count() == 0u);
     TEST_REQUIRE(server.open_session(make_open_request(3003u, 3u, 1301u), &status) == NULL);
     TEST_REQUIRE(status == proto::ERROR_CODE_SESSION_CLOSED);
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
 
 int main()
 {
-    if (test_server_accepts_derived_sessions() != 0) {
-        return 1;
+    if (test_server_accepts_derived_sessions() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_server_owns_link_sessions() != 0) {
-        return 1;
+    if (test_server_owns_link_sessions() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_session_message_handlers() != 0) {
-        return 1;
+    if (test_session_message_handlers() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    if (test_session_state_and_idle_update() != 0) {
-        return 1;
+    if (test_session_state_and_idle_update() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
     }
-    return 0;
+    return ABE_TEST_STATUS_OK;
 }
