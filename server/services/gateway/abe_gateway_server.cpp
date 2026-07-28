@@ -44,7 +44,8 @@ void set_gateway_defaults(GatewayServerConfig* config)
 }
 
 GatewayServer::GatewayServer()
-    : session_ready_(0),
+    : message_queue_(NULL),
+      session_ready_(0),
       tcp_ready_(0)
 {
     set_gateway_defaults(&config_);
@@ -146,6 +147,7 @@ int GatewayServer::init(abe::service::common::Context& context)
     int rc;
 
     if (context.loop == NULL ||
+        context.message_queue == NULL ||
         config_.host == NULL ||
         config_.max_clients == 0u ||
         config_.max_clients > ABE_GATEWAY_MAX_CLIENTS ||
@@ -157,6 +159,8 @@ int GatewayServer::init(abe::service::common::Context& context)
         config_.port > 65535u) {
         return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
+
+    message_queue_ = context.message_queue;
 
     rc = init_sessions();
     if (rc != abe::service::common::SERVICE_STATUS_OK) {
@@ -207,6 +211,7 @@ void GatewayServer::close(uint64_t now_ms)
         sessions_.close(now_ms);
         session_ready_ = 0;
     }
+    message_queue_ = NULL;
 }
 
 int GatewayServer::on_connect(abe::adapter::net::TcpLink* link, uint64_t now_ms)
@@ -220,7 +225,36 @@ int GatewayServer::on_receive(
     uint32_t packet_size,
     uint64_t now_ms)
 {
-    return dispatch(link, packet, packet_size, now_ms);
+    int rc;
+
+    if (!initialized() || link == NULL || message_queue_ == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    rc = message_queue_->push(
+        GatewayServer::process_queued_message,
+        this,
+        link,
+        link_id(link),
+        packet,
+        packet_size,
+        now_ms);
+    if (rc == abe::service::common::SERVICE_STATUS_NO_SLOT ||
+        rc == ABE_NO_MEMORY) {
+        ABE_LOG_WARN(
+            "gateway message queue full or memory exhausted rc=%d link_id=%llu",
+            rc,
+            (unsigned long long)link_id(link));
+        return proto::ERROR_CODE_COMMON_SERVER_BUSY;
+    }
+    if (rc != abe::service::common::SERVICE_STATUS_OK) {
+        ABE_LOG_WARN(
+            "gateway message enqueue failed rc=%d link_id=%llu",
+            rc,
+            (unsigned long long)link_id(link));
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+    return proto::ERROR_CODE_OK;
 }
 
 int GatewayServer::on_disconnect(
@@ -285,6 +319,23 @@ void GatewayServer::tcp_on_disconnect(
     if (gateway != NULL) {
         (void)gateway->on_disconnect(link, error_code, abe_time_mono_ms());
     }
+}
+
+int GatewayServer::process_queued_message(
+    const abe::service::common::Message& message,
+    void* user_data)
+{
+    GatewayServer* gateway;
+
+    gateway = (GatewayServer*)user_data;
+    if (gateway == NULL || message.source == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+    return gateway->dispatch(
+        (abe::adapter::net::TcpLink*)message.source,
+        message.data,
+        message.data_size,
+        message.enqueue_time_ms);
 }
 
 int GatewayServer::init_sessions()

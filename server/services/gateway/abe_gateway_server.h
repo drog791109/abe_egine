@@ -75,6 +75,10 @@ private:
         int error_code,
         void* user_data);
 
+    static int process_queued_message(
+        const abe::service::common::Message& message,
+        void* user_data);
+
     int init_sessions();
     int listen(abe::adapter::net::Loop* loop);
     int open_session_for_link(abe::adapter::net::TcpLink* link, uint64_t now_ms);
@@ -93,6 +97,7 @@ private:
     GatewaySession* find_session(uint64_t link_id);
 
     GatewayServerConfig config_;
+    abe::service::common::MessageQueue* message_queue_;
     abe::adapter::net::TcpServer tcp_;
     abe::logic::session::SessionServer sessions_;
     GatewaySession session_slots_[ABE_GATEWAY_MAX_CLIENTS];

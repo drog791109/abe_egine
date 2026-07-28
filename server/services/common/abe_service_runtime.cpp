@@ -13,6 +13,7 @@
 #endif
 
 #include <errno.h>
+#include <new>
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
@@ -23,7 +24,10 @@ namespace common {
 
 enum {
     SERVICE_RUNTIME_DEFAULT_TICK_MS = 10u,
-    SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT = 4096u,
+    SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT = 65536u,
+    SERVICE_RUNTIME_DEFAULT_MESSAGE_TICK_HZ = 30u,
+    SERVICE_RUNTIME_DEFAULT_MESSAGE_MAX_PER_TICK = 500u,
+    SERVICE_RUNTIME_DEFAULT_MESSAGE_QUEUE_CAPACITY = 65536u,
     SERVICE_RUNTIME_DEFAULT_MYSQL_PORT = 3306u,
     SERVICE_RUNTIME_DEFAULT_REDIS_PORT = 6379u
 };
@@ -199,6 +203,203 @@ Service::~Service()
 {
 }
 
+struct MessageQueue::Entry {
+    MessageHandler handler;
+    void* user_data;
+    void* source;
+    uint64_t source_id;
+    uint64_t enqueue_time_ms;
+    unsigned char* data;
+    uint32_t data_size;
+};
+
+MessageQueue::MessageQueue()
+    : entries_(NULL),
+      capacity_(0u),
+      head_(0u),
+      tail_(0u),
+      count_(0u)
+{
+}
+
+MessageQueue::~MessageQueue()
+{
+    close();
+}
+
+int MessageQueue::init(uint32_t capacity)
+{
+    close();
+    if (capacity == 0u) {
+        return SERVICE_STATUS_INVALID_ARG;
+    }
+
+    entries_ = new (std::nothrow) Entry[capacity];
+    if (entries_ == NULL) {
+        return ABE_NO_MEMORY;
+    }
+    memset(entries_, 0, sizeof(Entry) * capacity);
+    capacity_ = capacity;
+    head_ = 0u;
+    tail_ = 0u;
+    count_ = 0u;
+    return SERVICE_STATUS_OK;
+}
+
+void MessageQueue::close()
+{
+    uint32_t index;
+
+    if (entries_ == NULL) {
+        capacity_ = 0u;
+        head_ = 0u;
+        tail_ = 0u;
+        count_ = 0u;
+        return;
+    }
+
+    index = 0u;
+    while (index < capacity_) {
+        release_entry(&entries_[index]);
+        ++index;
+    }
+    delete[] entries_;
+    entries_ = NULL;
+    capacity_ = 0u;
+    head_ = 0u;
+    tail_ = 0u;
+    count_ = 0u;
+}
+
+int MessageQueue::push(
+    MessageHandler handler,
+    void* user_data,
+    void* source,
+    uint64_t source_id,
+    const void* data,
+    uint32_t data_size,
+    uint64_t now_ms)
+{
+    Entry* entry;
+    unsigned char* copied_data;
+
+    if (entries_ == NULL || capacity_ == 0u || handler == NULL ||
+        (data_size != 0u && data == NULL)) {
+        return SERVICE_STATUS_INVALID_ARG;
+    }
+    if (count_ >= capacity_) {
+        return SERVICE_STATUS_NO_SLOT;
+    }
+
+    copied_data = NULL;
+    if (data_size != 0u) {
+        copied_data = new (std::nothrow) unsigned char[data_size];
+        if (copied_data == NULL) {
+            return ABE_NO_MEMORY;
+        }
+        memcpy(copied_data, data, data_size);
+    }
+
+    entry = &entries_[tail_];
+    release_entry(entry);
+    entry->handler = handler;
+    entry->user_data = user_data;
+    entry->source = source;
+    entry->source_id = source_id;
+    entry->enqueue_time_ms = now_ms;
+    entry->data = copied_data;
+    entry->data_size = data_size;
+
+    ++tail_;
+    if (tail_ >= capacity_) {
+        tail_ = 0u;
+    }
+    ++count_;
+    return SERVICE_STATUS_OK;
+}
+
+int MessageQueue::process(
+    uint32_t max_count,
+    uint32_t* out_processed_count,
+    uint32_t* out_failed_count)
+{
+    uint32_t processed_count;
+    uint32_t failed_count;
+
+    if (out_processed_count != NULL) {
+        *out_processed_count = 0u;
+    }
+    if (out_failed_count != NULL) {
+        *out_failed_count = 0u;
+    }
+    if (entries_ == NULL || capacity_ == 0u || max_count == 0u) {
+        return SERVICE_STATUS_INVALID_ARG;
+    }
+
+    processed_count = 0u;
+    failed_count = 0u;
+    while (processed_count < max_count && count_ != 0u) {
+        Entry entry;
+        Message message;
+        int rc;
+
+        entry = entries_[head_];
+        memset(&entries_[head_], 0, sizeof(entries_[head_]));
+        ++head_;
+        if (head_ >= capacity_) {
+            head_ = 0u;
+        }
+        --count_;
+
+        memset(&message, 0, sizeof(message));
+        message.source = entry.source;
+        message.source_id = entry.source_id;
+        message.enqueue_time_ms = entry.enqueue_time_ms;
+        message.data = entry.data;
+        message.data_size = entry.data_size;
+
+        rc = entry.handler(message, entry.user_data);
+        if (rc != SERVICE_STATUS_OK) {
+            ++failed_count;
+            ABE_LOG_WARN(
+                "service message handler failed rc=%d status=%s source_id=%llu",
+                rc,
+                abe_status_name(rc),
+                (unsigned long long)entry.source_id);
+        }
+
+        delete[] entry.data;
+        ++processed_count;
+    }
+
+    if (out_processed_count != NULL) {
+        *out_processed_count = processed_count;
+    }
+    if (out_failed_count != NULL) {
+        *out_failed_count = failed_count;
+    }
+    return SERVICE_STATUS_OK;
+}
+
+uint32_t MessageQueue::count() const
+{
+    return count_;
+}
+
+uint32_t MessageQueue::capacity() const
+{
+    return capacity_;
+}
+
+void MessageQueue::release_entry(Entry* entry)
+{
+    if (entry == NULL) {
+        return;
+    }
+    delete[] entry->data;
+    memset(entry, 0, sizeof(*entry));
+}
+
 const char* Service::config_path() const
 {
     return NULL;
@@ -306,6 +507,9 @@ static void set_runtime_defaults(
     memset(config, 0, sizeof(*config));
     config->tick_ms = SERVICE_RUNTIME_DEFAULT_TICK_MS;
     config->timer_max_count = SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT;
+    config->message_tick_hz = SERVICE_RUNTIME_DEFAULT_MESSAGE_TICK_HZ;
+    config->message_max_per_tick = SERVICE_RUNTIME_DEFAULT_MESSAGE_MAX_PER_TICK;
+    config->message_queue_capacity = SERVICE_RUNTIME_DEFAULT_MESSAGE_QUEUE_CAPACITY;
     config->log_output = "console";
     config->log_file = NULL;
     config->log_dir = "logs";
@@ -364,10 +568,43 @@ static int add_common_options(
     rc = options.add_u32(
         "--timer-max-count",
         "count",
-        "service time wheel maximum timers, default 4096",
+        "service time wheel maximum timers, default 65536",
         1u,
         1048576u,
         &config->timer_max_count);
+    if (rc != SERVICE_STATUS_OK) {
+        return rc;
+    }
+
+    rc = options.add_u32(
+        "--message-tick-hz",
+        "hz",
+        "message queue process rate, default 30",
+        1u,
+        1000u,
+        &config->message_tick_hz);
+    if (rc != SERVICE_STATUS_OK) {
+        return rc;
+    }
+
+    rc = options.add_u32(
+        "--message-max-per-tick",
+        "count",
+        "maximum received messages processed per message tick, default 500",
+        1u,
+        100000u,
+        &config->message_max_per_tick);
+    if (rc != SERVICE_STATUS_OK) {
+        return rc;
+    }
+
+    rc = options.add_u32(
+        "--message-queue-capacity",
+        "count",
+        "received message queue capacity, default 65536",
+        1u,
+        1048576u,
+        &config->message_queue_capacity);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -747,6 +984,33 @@ static int apply_runtime_config(
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
+    rc = read_config_u32(
+        config,
+        "runtime.message_tick_hz",
+        1u,
+        1000u,
+        &runtime_config->message_tick_hz);
+    if (rc != SERVICE_STATUS_OK) {
+        return rc;
+    }
+    rc = read_config_u32(
+        config,
+        "runtime.message_max_per_tick",
+        1u,
+        100000u,
+        &runtime_config->message_max_per_tick);
+    if (rc != SERVICE_STATUS_OK) {
+        return rc;
+    }
+    rc = read_config_u32(
+        config,
+        "runtime.message_queue_capacity",
+        1u,
+        1048576u,
+        &runtime_config->message_queue_capacity);
+    if (rc != SERVICE_STATUS_OK) {
+        return rc;
+    }
     rc = read_config_string(config, "log.output", &runtime_config->log_output);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
@@ -1080,20 +1344,114 @@ static int init_time_wheel(
     return SERVICE_STATUS_OK;
 }
 
+static int init_message_queue(
+    const RuntimeConfig* config,
+    MessageQueue* queue)
+{
+    uint32_t capacity;
+    int rc;
+
+    if (queue == NULL) {
+        return SERVICE_STATUS_INVALID_ARG;
+    }
+
+    capacity = config == NULL || config->message_queue_capacity == 0u
+        ? SERVICE_RUNTIME_DEFAULT_MESSAGE_QUEUE_CAPACITY
+        : config->message_queue_capacity;
+    rc = queue->init(capacity);
+    if (rc != SERVICE_STATUS_OK) {
+        ABE_LOG_ERROR("service message queue init failed rc=%d status=%s capacity=%u",
+            rc,
+            abe_status_name(rc),
+            capacity);
+        return rc;
+    }
+
+    ABE_LOG_INFO("service message queue started capacity=%u", capacity);
+    return SERVICE_STATUS_OK;
+}
+
+static uint32_t message_tick_interval_ms(const RuntimeConfig* config)
+{
+    uint32_t tick_hz;
+    uint32_t interval_ms;
+
+    tick_hz = config == NULL || config->message_tick_hz == 0u
+        ? SERVICE_RUNTIME_DEFAULT_MESSAGE_TICK_HZ
+        : config->message_tick_hz;
+    interval_ms = 1000u / tick_hz;
+    return interval_ms == 0u ? 1u : interval_ms;
+}
+
+static uint32_t message_max_per_tick(const RuntimeConfig* config)
+{
+    if (config == NULL || config->message_max_per_tick == 0u) {
+        return SERVICE_RUNTIME_DEFAULT_MESSAGE_MAX_PER_TICK;
+    }
+    return config->message_max_per_tick;
+}
+
+static int update_message_queue(
+    Context* context,
+    const RuntimeConfig* config,
+    uint64_t now_ms,
+    uint64_t* next_tick_ms)
+{
+    uint32_t processed_count;
+    uint32_t failed_count;
+    uint32_t interval_ms;
+    int rc;
+
+    if (context == NULL || context->message_queue == NULL || next_tick_ms == NULL) {
+        return SERVICE_STATUS_INVALID_ARG;
+    }
+    if (now_ms < *next_tick_ms) {
+        return SERVICE_STATUS_OK;
+    }
+
+    processed_count = 0u;
+    failed_count = 0u;
+    rc = context->message_queue->process(
+        message_max_per_tick(config),
+        &processed_count,
+        &failed_count);
+    if (rc != SERVICE_STATUS_OK) {
+        ABE_LOG_ERROR("service message queue update failed rc=%d status=%s",
+            rc,
+            abe_status_name(rc));
+        return rc;
+    }
+
+    interval_ms = message_tick_interval_ms(config);
+    *next_tick_ms += interval_ms;
+    if (*next_tick_ms <= now_ms) {
+        *next_tick_ms = now_ms + interval_ms;
+    }
+    return SERVICE_STATUS_OK;
+}
+
 static int run_loop(
     Context* context,
     Service& service,
-    uint32_t tick_ms)
+    const RuntimeConfig* runtime_config)
 {
+    uint64_t next_message_tick_ms;
+    uint32_t tick_ms;
     int result;
     int rc;
 
     reset_stop();
     install_stop_signal_handlers();
 
+    tick_ms = runtime_config == NULL
+        ? SERVICE_RUNTIME_DEFAULT_TICK_MS
+        : runtime_config->tick_ms;
+    next_message_tick_ms = abe_time_mono_ms();
+
     result = SERVICE_STATUS_OK;
     while (!stop_requested()) {
         uint32_t timer_fired_count;
+        uint64_t now_ms;
 
         rc = context->loop->update();
         if (rc != ABE_NET_OK) {
@@ -1108,6 +1466,13 @@ static int run_loop(
             ABE_LOG_ERROR("service time wheel update failed rc=%d status=%s",
                 rc,
                 abe_status_name(rc));
+            result = rc;
+            break;
+        }
+
+        now_ms = abe_time_mono_ms();
+        rc = update_message_queue(context, runtime_config, now_ms, &next_message_tick_ms);
+        if (rc != SERVICE_STATUS_OK) {
             result = rc;
             break;
         }
@@ -1136,7 +1501,7 @@ static int run_loop(
         }
 #endif
 
-        rc = service.update(abe_time_mono_ms());
+        rc = service.update(now_ms);
         if (rc != SERVICE_STATUS_OK) {
             ABE_LOG_ERROR("service update failed rc=%d", rc);
             result = rc;
@@ -1204,10 +1569,12 @@ int run(int argc, char** argv, Service& service)
     abe_redis_async_t* redis;
     abe_snowflake_t* id_generator;
     abe_time_wheel_t* time_wheel;
+    MessageQueue message_queue;
     abe::adapter::net::Loop loop;
     const char* service_name;
     int loop_ready;
     int time_wheel_ready;
+    int message_queue_ready;
     int service_ready;
     bool log_ready;
     int rc;
@@ -1341,6 +1708,7 @@ int run(int argc, char** argv, Service& service)
 
     loop_ready = 0;
     time_wheel_ready = 0;
+    message_queue_ready = 0;
     service_ready = 0;
     time_wheel = NULL;
     memset(&context, 0, sizeof(context));
@@ -1355,28 +1723,38 @@ int run(int argc, char** argv, Service& service)
             result = rc;
         } else {
             time_wheel_ready = 1;
-            context.loop = &loop;
-            context.time_wheel = time_wheel;
-            context.config = config;
-            context.mysql = mysql;
-            context.redis = redis;
-            context.id_generator = id_generator;
-            context.runtime = &runtime_config;
-
-            rc = service.init(context);
+            rc = init_message_queue(&runtime_config, &message_queue);
             if (rc != SERVICE_STATUS_OK) {
-                ABE_LOG_ERROR("service init failed rc=%d", rc);
                 result = rc;
             } else {
-                service_ready = 1;
-                ABE_LOG_INFO("service started name=%s", service_name);
-                result = run_loop(&context, service, runtime_config.tick_ms);
+                message_queue_ready = 1;
+                context.loop = &loop;
+                context.time_wheel = time_wheel;
+                context.message_queue = &message_queue;
+                context.config = config;
+                context.mysql = mysql;
+                context.redis = redis;
+                context.id_generator = id_generator;
+                context.runtime = &runtime_config;
+
+                rc = service.init(context);
+                if (rc != SERVICE_STATUS_OK) {
+                    ABE_LOG_ERROR("service init failed rc=%d", rc);
+                    result = rc;
+                } else {
+                    service_ready = 1;
+                    ABE_LOG_INFO("service started name=%s", service_name);
+                    result = run_loop(&context, service, &runtime_config);
+                }
             }
         }
     }
 
     if (service_ready) {
         service.close(abe_time_mono_ms());
+    }
+    if (message_queue_ready) {
+        message_queue.close();
     }
     if (time_wheel_ready) {
         abe_time_wheel_destroy(time_wheel);

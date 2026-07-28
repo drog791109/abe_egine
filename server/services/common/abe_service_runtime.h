@@ -34,6 +34,9 @@ struct RuntimeConfig {
     const char* config_path;
     uint32_t tick_ms;
     uint32_t timer_max_count;
+    uint32_t message_tick_hz;
+    uint32_t message_max_per_tick;
+    uint32_t message_queue_capacity;
 
     const char* log_output;
     const char* log_file;
@@ -62,9 +65,59 @@ struct RuntimeConfig {
     uint32_t id_node_id;
 };
 
+struct Message {
+    void* source;
+    uint64_t source_id;
+    uint64_t enqueue_time_ms;
+    const void* data;
+    uint32_t data_size;
+};
+
+typedef int (*MessageHandler)(const Message& message, void* user_data);
+
+class MessageQueue {
+public:
+    MessageQueue();
+    ~MessageQueue();
+
+    int init(uint32_t capacity);
+    void close();
+
+    int push(
+        MessageHandler handler,
+        void* user_data,
+        void* source,
+        uint64_t source_id,
+        const void* data,
+        uint32_t data_size,
+        uint64_t now_ms);
+    int process(
+        uint32_t max_count,
+        uint32_t* out_processed_count,
+        uint32_t* out_failed_count);
+
+    uint32_t count() const;
+    uint32_t capacity() const;
+
+private:
+    MessageQueue(const MessageQueue&);
+    MessageQueue& operator=(const MessageQueue&);
+
+    struct Entry;
+
+    void release_entry(Entry* entry);
+
+    Entry* entries_;
+    uint32_t capacity_;
+    uint32_t head_;
+    uint32_t tail_;
+    uint32_t count_;
+};
+
 struct Context {
     abe::adapter::net::Loop* loop;
     abe_time_wheel_t* time_wheel;
+    MessageQueue* message_queue;
     const abe_config_t* config;
     abe_db_mysql_async_t* mysql;
     abe_redis_async_t* redis;
