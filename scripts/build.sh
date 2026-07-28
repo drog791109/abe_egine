@@ -16,8 +16,8 @@ Usage:
   scripts/build.sh [target]
 
 Defaults:
-  target    abe_gateway
-  BUILD_DIR build/engine
+  target      abe_gateway
+  BUILD_DIR   build/engine, or /tmp/abe_engine_build_<id> on VMware shared mounts
 
 Environment:
   BUILD_DIR   CMake build directory.
@@ -36,13 +36,40 @@ fi
 
 cd "${REPO_ROOT}"
 
+repo_fs_type() {
+  df -T "${REPO_ROOT}" 2>/dev/null | awk 'NR == 2 { print $2 }'
+}
+
+default_build_dir() {
+  local fs_type repo_key
+
+  fs_type=$(repo_fs_type || true)
+  case "${fs_type}" in
+    vmhgfs-fuse|fuse.vmhgfs-fuse)
+      repo_key=$(printf '%s' "${REPO_ROOT}" | cksum | awk '{ print $1 }')
+      printf '/tmp/abe_engine_build_%s\n' "${repo_key}"
+      ;;
+    *)
+      printf 'build/engine\n'
+      ;;
+  esac
+}
+
 target=${1:-abe_gateway}
 if [ "$#" -gt 1 ]; then
   usage >&2
   exit 2
 fi
 
-build_dir=${BUILD_DIR:-build/engine}
+build_dir=${BUILD_DIR:-$(default_build_dir)}
+if [ -z "${BUILD_DIR:-}" ]; then
+  case "$(repo_fs_type || true)" in
+    vmhgfs-fuse|fuse.vmhgfs-fuse)
+      echo "using container-local BUILD_DIR=${build_dir} for VMware shared workspace"
+      ;;
+  esac
+fi
+
 jobs=${JOBS:-}
 if [ -z "${jobs}" ]; then
   jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)

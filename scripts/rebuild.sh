@@ -16,8 +16,8 @@ Usage:
   scripts/rebuild.sh [target]
 
 Defaults:
-  target    abe_gateway
-  BUILD_DIR build/engine
+  target      abe_gateway
+  BUILD_DIR   build/engine, or /tmp/abe_engine_build_<id> on VMware shared mounts
 
 This script does not start Docker. Run it inside /workspace in the dev container,
 or on a host that already has all build dependencies installed.
@@ -34,7 +34,26 @@ if [ "$#" -gt 1 ]; then
   exit 2
 fi
 
-build_dir=${BUILD_DIR:-build/engine}
+repo_fs_type() {
+  df -T "${REPO_ROOT}" 2>/dev/null | awk 'NR == 2 { print $2 }'
+}
+
+default_build_dir() {
+  local fs_type repo_key
+
+  fs_type=$(repo_fs_type || true)
+  case "${fs_type}" in
+    vmhgfs-fuse|fuse.vmhgfs-fuse)
+      repo_key=$(printf '%s' "${REPO_ROOT}" | cksum | awk '{ print $1 }')
+      printf '/tmp/abe_engine_build_%s\n' "${repo_key}"
+      ;;
+    *)
+      printf 'build/engine\n'
+      ;;
+  esac
+}
+
+build_dir=${BUILD_DIR:-$(default_build_dir)}
 
 case "${build_dir}" in
   ""|"/"|".")
