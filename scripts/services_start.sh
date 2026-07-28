@@ -73,6 +73,16 @@ process_state() {
   ps -o stat= -p "${pid}" 2>/dev/null | tr -d ' ' || true
 }
 
+print_status() {
+  local service status pid
+
+  service=$1
+  status=$2
+  pid=${3:--}
+
+  printf '%-12s %-10s %s\n' "${service}" "${status}" "${pid}"
+}
+
 pid_file_pid() {
   local file line
 
@@ -141,7 +151,7 @@ write_pid_file() {
 }
 
 start_gateway() {
-  local binary config run_dir out_dir pid_file out_file log_dir daily_file gateway_args
+  local binary config run_dir out_dir pid_file out_file gateway_args
   local pid state
   local -a extra_args
 
@@ -151,8 +161,6 @@ start_gateway() {
   out_dir=${OUT_DIR:-bin/logs}
   pid_file=${GATEWAY_PID_FILE:-${run_dir}/gateway.pid}
   out_file=${GATEWAY_OUT_FILE:-${out_dir}/gateway/stdout.log}
-  log_dir=${GATEWAY_LOG_DIR:-${out_dir}/gateway}
-  daily_file="${log_dir}/$(date +%F)/gateway.log"
   gateway_args=${GATEWAY_ARGS:-}
 
   mkdir -p "$(dirname "${pid_file}")" "$(dirname "${out_file}")"
@@ -170,7 +178,7 @@ start_gateway() {
 
   if is_running_pid_file "${pid_file}"; then
     pid=$(pid_file_pid "${pid_file}")
-    echo "gateway already running pid=${pid}"
+    print_status gateway running "${pid}"
     return 0
   fi
 
@@ -192,11 +200,7 @@ start_gateway() {
   fi
 
   write_pid_file "${pid_file}" gateway "${pid}"
-  echo "gateway started pid=${pid}"
-  echo "gateway pid file: ${pid_file}"
-  echo "gateway stdout/stderr: ${out_file}"
-  echo "gateway daily log: ${daily_file}"
-  echo "follow logs: tail -F ${out_file} ${daily_file}"
+  print_status gateway started "${pid}"
 }
 
 start_service() {

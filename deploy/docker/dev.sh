@@ -40,7 +40,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
-ABE_REPO_ROOT=${ABE_REPO_ROOT:-${REPO_ROOT}}
+ABE_REPO_ROOT=${REPO_ROOT}
 export ABE_REPO_ROOT
 
 usage() {
@@ -159,7 +159,7 @@ build_portable() {
 run_docker() {
   if [ "$(id -u)" -eq 0 ] || docker info >/dev/null 2>&1; then
     docker "$@"
-    return 0
+    return $?
   fi
 
   sudo docker "$@"
@@ -168,7 +168,7 @@ run_docker() {
 run_privileged() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
-    return 0
+    return $?
   fi
 
   sudo "$@"

@@ -95,6 +95,16 @@ process_state() {
   ps -o stat= -p "${pid}" 2>/dev/null | tr -d ' ' || true
 }
 
+print_status() {
+  local service status pid
+
+  service=$1
+  status=$2
+  pid=${3:--}
+
+  printf '%-12s %-10s %s\n' "${service}" "${status}" "${pid}"
+}
+
 stop_pid_file() {
   local service pid_file current_ns file_ns pid state i
 
@@ -102,14 +112,14 @@ stop_pid_file() {
   pid_file=$2
 
   if [ ! -f "${pid_file}" ]; then
-    echo "${service} is not running"
+    print_status "${service}" stopped -
     return 0
   fi
 
   pid=$(pid_file_pid "${pid_file}" || true)
   if [ -z "${pid}" ]; then
     rm -f "${pid_file}"
-    echo "${service} pid file was invalid"
+    print_status "${service}" invalid -
     return 0
   fi
 
@@ -123,13 +133,13 @@ stop_pid_file() {
   state=$(process_state "${pid}")
   if [ -z "${state}" ]; then
     rm -f "${pid_file}"
-    echo "${service} is not running"
+    print_status "${service}" stopped "${pid}"
     return 0
   fi
 
   if [ "${state#Z}" != "${state}" ]; then
     rm -f "${pid_file}"
-    echo "${service} already exited pid=${pid}"
+    print_status "${service}" exited "${pid}"
     return 0
   fi
 
@@ -151,22 +161,15 @@ stop_pid_file() {
   done
 
   rm -f "${pid_file}"
-  echo "${service} stopped pid=${pid}"
+  print_status "${service}" stopped "${pid}"
 }
 
 stop_gateway() {
-  local run_dir out_dir pid_file out_file log_dir daily_file
+  local run_dir pid_file
 
   run_dir=${RUN_DIR:-bin/run}
-  out_dir=${OUT_DIR:-bin/logs}
   pid_file=${GATEWAY_PID_FILE:-${run_dir}/gateway.pid}
-  out_file=${GATEWAY_OUT_FILE:-${out_dir}/gateway/stdout.log}
-  log_dir=${GATEWAY_LOG_DIR:-${out_dir}/gateway}
-  daily_file="${log_dir}/$(date +%F)/gateway.log"
   stop_pid_file gateway "${pid_file}"
-  echo "gateway logs kept:"
-  echo "  stdout/stderr: ${out_file}"
-  echo "  daily log: ${daily_file}"
 }
 
 stop_service() {

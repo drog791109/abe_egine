@@ -10,7 +10,7 @@ set -euo pipefail
 DOCKER_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "${DOCKER_DIR}/../.." && pwd)
 COMPOSE_FILE="${DOCKER_DIR}/docker-compose.yml"
-ABE_REPO_ROOT=${ABE_REPO_ROOT:-${REPO_ROOT}}
+ABE_REPO_ROOT=${REPO_ROOT}
 export ABE_REPO_ROOT
 
 quote_arg() {
@@ -43,7 +43,7 @@ require_docker() {
 docker_cmd() {
   if [ "$(id -u)" -eq 0 ] || docker info >/dev/null 2>&1; then
     docker "$@"
-    return 0
+    return $?
   fi
 
   sudo docker "$@"
@@ -83,8 +83,8 @@ ensure_dev_deps() {
     return 0
   fi
 
-  echo "dev image is missing json-c/libxml2 development packages; rebuilding dev image"
-  compose build dev
+  echo "dev image is missing json-c/libxml2 development packages; rebuilding dev image without cache"
+  compose build --no-cache dev
   compose up -d --force-recreate dev
   compose exec -T dev sh -lc "${check_cmd}"
 }
