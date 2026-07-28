@@ -227,7 +227,8 @@ static void abe_log_configure_logger(
     }
 
     logger->set_level(log_level);
-    logger->set_pattern("[%l] [%s:%# %!] %v");
+    logger->flush_on(log_level);
+    logger->set_pattern("%v");
 }
 
 static void abe_log_drop_logger(const char* logger_name)
@@ -371,6 +372,26 @@ static int abe_log_format_timestamp(
     return 0;
 }
 
+static const char* abe_log_file_name(const char* file)
+{
+    const char* name;
+    const char* cursor;
+
+    if (file == NULL) {
+        return "";
+    }
+
+    name = file;
+    cursor = file;
+    while (*cursor != '\0') {
+        if (*cursor == '/' || *cursor == '\\') {
+            name = cursor + 1;
+        }
+        cursor += 1;
+    }
+    return name;
+}
+
 namespace abe {
 namespace log {
 
@@ -501,7 +522,11 @@ int set_level(level value)
     }
 
     try {
-        g_abe_log_logger->set_level(abe_log_to_spdlog_level(value));
+        spdlog::level::level_enum log_level;
+
+        log_level = abe_log_to_spdlog_level(value);
+        g_abe_log_logger->set_level(log_level);
+        g_abe_log_logger->flush_on(log_level);
         return status_ok;
     } catch (...) {
         return status_initialize_failed;
@@ -620,7 +645,14 @@ void write(
         return;
     }
 
-    written = snprintf(output, sizeof(output), "[%s] %s", timestamp, message);
+    written = snprintf(
+        output,
+        sizeof(output),
+        "[%s][%s][%s] %s",
+        timestamp,
+        level_name(value),
+        abe_log_file_name(file),
+        message);
     if (written < 0) {
         return;
     }
