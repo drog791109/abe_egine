@@ -4,13 +4,8 @@
 #include "abe_snowflake.h"
 #include "abe_time.h"
 
-#ifdef ABE_SERVICE_HAS_MYSQL
 #include "abe_db_mysql_async.h"
-#endif
-
-#ifdef ABE_SERVICE_HAS_REDIS
 #include "abe_redis_async.h"
-#endif
 
 #include <errno.h>
 #include <new>
@@ -29,41 +24,135 @@ enum {
     SERVICE_RUNTIME_DEFAULT_MESSAGE_MAX_PER_TICK = 500u,
     SERVICE_RUNTIME_DEFAULT_MESSAGE_QUEUE_CAPACITY = 65536u,
     SERVICE_RUNTIME_DEFAULT_MYSQL_PORT = 3306u,
-    SERVICE_RUNTIME_DEFAULT_REDIS_PORT = 6379u
+    SERVICE_RUNTIME_DEFAULT_REDIS_PORT = 6379u,
+    SERVICE_RUNTIME_SETTING_SMALL_TEXT_SIZE = 32u,
+    SERVICE_RUNTIME_SETTING_NAME_SIZE = 128u,
+    SERVICE_RUNTIME_SETTING_HOST_SIZE = 256u,
+    SERVICE_RUNTIME_SETTING_SECRET_SIZE = 256u,
+    SERVICE_RUNTIME_SETTING_PATH_SIZE = 512u
+};
+
+static void init_setting_text(char* out_text, size_t out_size, const char* value)
+{
+    size_t value_size;
+
+    if (out_text == NULL || out_size == 0u) {
+        return;
+    }
+
+    value = value == NULL ? "" : value;
+    value_size = strlen(value);
+    if (value_size >= out_size) {
+        value_size = out_size - 1u;
+    }
+    memcpy(out_text, value, value_size);
+    out_text[value_size] = '\0';
+}
+
+static int copy_setting_text(
+    const char* path,
+    const char* value,
+    char* out_text,
+    size_t out_size)
+{
+    size_t value_size;
+
+    if (path == NULL || out_text == NULL || out_size == 0u) {
+        return SERVICE_STATUS_INVALID_ARG;
+    }
+
+    value = value == NULL ? "" : value;
+    value_size = strlen(value);
+    if (value_size >= out_size) {
+        ABE_LOG_ERROR(
+            "config string value is too long path=%s max_size=%u status=%s",
+            path,
+            (unsigned int)(out_size - 1u),
+            abe_status_name(SERVICE_STATUS_INVALID_ARG));
+        return SERVICE_STATUS_INVALID_ARG;
+    }
+
+    memcpy(out_text, value, value_size + 1u);
+    return SERVICE_STATUS_OK;
+}
+
+struct RuntimeSettings {
+    uint32_t tick_ms = SERVICE_RUNTIME_DEFAULT_TICK_MS;
+    uint32_t timer_max_count = SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT;
+    uint32_t message_tick_hz = SERVICE_RUNTIME_DEFAULT_MESSAGE_TICK_HZ;
+    uint32_t message_max_per_tick = SERVICE_RUNTIME_DEFAULT_MESSAGE_MAX_PER_TICK;
+    uint32_t message_queue_capacity = SERVICE_RUNTIME_DEFAULT_MESSAGE_QUEUE_CAPACITY;
+};
+
+struct LogSettings {
+    LogSettings()
+        : utc_offset_minutes(0)
+    {
+        init_setting_text(output, sizeof(output), "console");
+        init_setting_text(file, sizeof(file), "");
+        init_setting_text(dir, sizeof(dir), "logs");
+        init_setting_text(level, sizeof(level), "info");
+    }
+
+    char output[SERVICE_RUNTIME_SETTING_SMALL_TEXT_SIZE];
+    char file[SERVICE_RUNTIME_SETTING_PATH_SIZE];
+    char dir[SERVICE_RUNTIME_SETTING_PATH_SIZE];
+    char level[SERVICE_RUNTIME_SETTING_SMALL_TEXT_SIZE];
+    int32_t utc_offset_minutes;
+};
+
+struct MysqlSettings {
+    MysqlSettings()
+        : port(SERVICE_RUNTIME_DEFAULT_MYSQL_PORT),
+          worker_count(4u),
+          queue_capacity(4096u)
+    {
+        init_setting_text(host, sizeof(host), "127.0.0.1");
+        init_setting_text(database, sizeof(database), "abe_engine");
+        init_setting_text(user, sizeof(user), "abe");
+        init_setting_text(password, sizeof(password), "abe123");
+    }
+
+    char host[SERVICE_RUNTIME_SETTING_HOST_SIZE];
+    uint32_t port;
+    char database[SERVICE_RUNTIME_SETTING_NAME_SIZE];
+    char user[SERVICE_RUNTIME_SETTING_NAME_SIZE];
+    char password[SERVICE_RUNTIME_SETTING_SECRET_SIZE];
+    uint32_t worker_count;
+    uint32_t queue_capacity;
+};
+
+struct RedisSettings {
+    RedisSettings()
+        : port(SERVICE_RUNTIME_DEFAULT_REDIS_PORT),
+          database(0),
+          connect_timeout_ms(1000u),
+          command_timeout_ms(1000u),
+          memory_pool_capacity(0u)
+    {
+        init_setting_text(host, sizeof(host), "127.0.0.1");
+        init_setting_text(password, sizeof(password), "");
+    }
+
+    char host[SERVICE_RUNTIME_SETTING_HOST_SIZE];
+    uint32_t port;
+    char password[SERVICE_RUNTIME_SETTING_SECRET_SIZE];
+    int32_t database;
+    uint32_t connect_timeout_ms;
+    uint32_t command_timeout_ms;
+    uint64_t memory_pool_capacity;
+};
+
+struct IdSettings {
+    uint32_t node_id = 0u;
 };
 
 struct ServiceSettings {
-    uint32_t tick_ms;
-    uint32_t timer_max_count;
-    uint32_t message_tick_hz;
-    uint32_t message_max_per_tick;
-    uint32_t message_queue_capacity;
-
-    const char* log_output;
-    const char* log_file;
-    const char* log_dir;
-    const char* log_level;
-    int32_t log_utc_offset_minutes;
-
-    uint32_t mysql_enable;
-    const char* mysql_host;
-    uint32_t mysql_port;
-    const char* mysql_database;
-    const char* mysql_user;
-    const char* mysql_password;
-    uint32_t mysql_worker_count;
-    uint32_t mysql_queue_capacity;
-
-    uint32_t redis_enable;
-    const char* redis_host;
-    uint32_t redis_port;
-    const char* redis_password;
-    int32_t redis_database;
-    uint32_t redis_connect_timeout_ms;
-    uint32_t redis_command_timeout_ms;
-    uint64_t redis_memory_pool_capacity;
-
-    uint32_t id_node_id;
+    RuntimeSettings runtime;
+    LogSettings log;
+    MysqlSettings mysql;
+    RedisSettings redis;
+    IdSettings id;
 };
 
 static volatile sig_atomic_t g_stop_requested = 0;
@@ -387,49 +476,17 @@ static void shutdown_log_if_ready(bool* log_ready)
     }
 }
 
-static void set_runtime_defaults(
-    const char* service_name,
-    ServiceSettings* config)
+static void apply_dynamic_defaults(ServiceSettings* settings)
 {
     int timezone_offset;
 
-    if (config == NULL) {
+    if (settings == NULL) {
         return;
     }
 
-    memset(config, 0, sizeof(*config));
-    config->tick_ms = SERVICE_RUNTIME_DEFAULT_TICK_MS;
-    config->timer_max_count = SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT;
-    config->message_tick_hz = SERVICE_RUNTIME_DEFAULT_MESSAGE_TICK_HZ;
-    config->message_max_per_tick = SERVICE_RUNTIME_DEFAULT_MESSAGE_MAX_PER_TICK;
-    config->message_queue_capacity = SERVICE_RUNTIME_DEFAULT_MESSAGE_QUEUE_CAPACITY;
-    config->log_output = "console";
-    config->log_file = NULL;
-    config->log_dir = "logs";
-    config->log_level = "info";
-    config->log_utc_offset_minutes = 0;
     if (abe_time_get_timezone_offset_minutes(&timezone_offset) == ABE_TIME_OK) {
-        config->log_utc_offset_minutes = timezone_offset;
+        settings->log.utc_offset_minutes = timezone_offset;
     }
-
-    config->mysql_enable = 0u;
-    config->mysql_host = "127.0.0.1";
-    config->mysql_port = SERVICE_RUNTIME_DEFAULT_MYSQL_PORT;
-    config->mysql_database = service_name == NULL ? "abe_engine" : service_name;
-    config->mysql_user = "abe";
-    config->mysql_password = "abe123";
-    config->mysql_worker_count = 4u;
-    config->mysql_queue_capacity = 4096u;
-
-    config->redis_enable = 0u;
-    config->redis_host = "127.0.0.1";
-    config->redis_port = SERVICE_RUNTIME_DEFAULT_REDIS_PORT;
-    config->redis_password = "";
-    config->redis_database = 0;
-    config->redis_connect_timeout_ms = 1000u;
-    config->redis_command_timeout_ms = 1000u;
-    config->redis_memory_pool_capacity = 0u;
-    config->id_node_id = 0u;
 }
 
 static int load_config_file(
@@ -454,299 +511,165 @@ static int load_config_file(
     return SERVICE_STATUS_OK;
 }
 
-static int read_config_string(
-    const abe_config_t* config,
-    const char* path,
-    const char** out_value)
-{
-    const char* text;
-    int rc;
-
-    if (config == NULL || path == NULL || out_value == NULL) {
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    rc = abe_config_get_string(config, path, &text);
-    if (rc == ABE_CONFIG_NOT_FOUND) {
-        return SERVICE_STATUS_OK;
-    }
-    if (rc != ABE_CONFIG_OK) {
-        ABE_LOG_ERROR(
-            "invalid string config value path=%s status=%s",
-            path,
-            abe_status_name(SERVICE_STATUS_INVALID_ARG));
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    *out_value = text;
-    return SERVICE_STATUS_OK;
-}
-
-static int read_config_u32(
-    const abe_config_t* config,
-    const char* path,
-    uint32_t min_value,
-    uint32_t max_value,
-    uint32_t* out_value)
-{
-    uint64_t value;
-    int rc;
-
-    if (config == NULL || path == NULL || out_value == NULL || min_value > max_value) {
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    rc = abe_config_get_u64(config, path, &value);
-    if (rc == ABE_CONFIG_NOT_FOUND) {
-        return SERVICE_STATUS_OK;
-    }
-    if (rc != ABE_CONFIG_OK || value < min_value || value > max_value) {
-        ABE_LOG_ERROR(
-            "invalid unsigned config value path=%s status=%s",
-            path,
-            abe_status_name(SERVICE_STATUS_INVALID_ARG));
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    *out_value = (uint32_t)value;
-    return SERVICE_STATUS_OK;
-}
-
-static int read_config_i32(
-    const abe_config_t* config,
-    const char* path,
-    int32_t min_value,
-    int32_t max_value,
-    int32_t* out_value)
-{
-    int64_t value;
-    int rc;
-
-    if (config == NULL || path == NULL || out_value == NULL || min_value > max_value) {
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    rc = abe_config_get_i64(config, path, &value);
-    if (rc == ABE_CONFIG_NOT_FOUND) {
-        return SERVICE_STATUS_OK;
-    }
-    if (rc != ABE_CONFIG_OK || value < min_value || value > max_value) {
-        ABE_LOG_ERROR(
-            "invalid signed config value path=%s status=%s",
-            path,
-            abe_status_name(SERVICE_STATUS_INVALID_ARG));
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    *out_value = (int32_t)value;
-    return SERVICE_STATUS_OK;
-}
-
-static int read_config_u64(
-    const abe_config_t* config,
-    const char* path,
-    uint64_t min_value,
-    uint64_t max_value,
-    uint64_t* out_value)
-{
-    uint64_t value;
-    int rc;
-
-    if (config == NULL || path == NULL || out_value == NULL || min_value > max_value) {
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    rc = abe_config_get_u64(config, path, &value);
-    if (rc == ABE_CONFIG_NOT_FOUND) {
-        return SERVICE_STATUS_OK;
-    }
-    if (rc != ABE_CONFIG_OK || value < min_value || value > max_value) {
-        ABE_LOG_ERROR(
-            "invalid unsigned config value path=%s status=%s",
-            path,
-            abe_status_name(SERVICE_STATUS_INVALID_ARG));
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    *out_value = value;
-    return SERVICE_STATUS_OK;
-}
-
 static int apply_runtime_config(
     ServiceSettings* settings,
     const abe_config_t* config)
 {
+    struct StringField {
+        const char* path;
+        char* value;
+        size_t value_size;
+    };
+    struct U32Field {
+        const char* path;
+        uint32_t min_value;
+        uint32_t max_value;
+        uint32_t* value;
+    };
+    struct I32Field {
+        const char* path;
+        int32_t min_value;
+        int32_t max_value;
+        int32_t* value;
+    };
+    struct U64Field {
+        const char* path;
+        uint64_t min_value;
+        uint64_t max_value;
+        uint64_t* value;
+    };
+    size_t index;
     int rc;
 
     if (settings == NULL || config == NULL) {
         return SERVICE_STATUS_OK;
     }
 
-    rc = read_config_u32(
-        config, "runtime.tick_ms", 0u, 1000u, &settings->tick_ms);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config,
-        "runtime.timer_max_count",
-        1u,
-        1048576u,
-        &settings->timer_max_count);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config,
-        "runtime.message_tick_hz",
-        1u,
-        1000u,
-        &settings->message_tick_hz);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config,
-        "runtime.message_max_per_tick",
-        1u,
-        100000u,
-        &settings->message_max_per_tick);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config,
-        "runtime.message_queue_capacity",
-        1u,
-        1048576u,
-        &settings->message_queue_capacity);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_string(config, "log.output", &settings->log_output);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_string(config, "log.file", &settings->log_file);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_string(config, "log.dir", &settings->log_dir);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_string(config, "log.level", &settings->log_level);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_i32(
-        config,
-        "log.utc_offset_minutes",
-        -840,
-        840,
-        &settings->log_utc_offset_minutes);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config, "mysql.enable", 0u, 1u, &settings->mysql_enable);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_string(config, "mysql.host", &settings->mysql_host);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config, "mysql.port", 1u, 65535u, &settings->mysql_port);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_string(
-        config, "mysql.database", &settings->mysql_database);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_string(config, "mysql.user", &settings->mysql_user);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_string(config, "mysql.password", &settings->mysql_password);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config,
-        "mysql.worker_count",
-        1u,
-        32u,
-        &settings->mysql_worker_count);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config,
-        "mysql.queue_capacity",
-        1u,
-        1048576u,
-        &settings->mysql_queue_capacity);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
+    const StringField string_fields[] = {
+        {"log.output", settings->log.output, sizeof(settings->log.output)},
+        {"log.file", settings->log.file, sizeof(settings->log.file)},
+        {"log.dir", settings->log.dir, sizeof(settings->log.dir)},
+        {"log.level", settings->log.level, sizeof(settings->log.level)},
+        {"mysql.host", settings->mysql.host, sizeof(settings->mysql.host)},
+        {"mysql.database", settings->mysql.database, sizeof(settings->mysql.database)},
+        {"mysql.user", settings->mysql.user, sizeof(settings->mysql.user)},
+        {"mysql.password", settings->mysql.password, sizeof(settings->mysql.password)},
+        {"redis.host", settings->redis.host, sizeof(settings->redis.host)},
+        {"redis.password", settings->redis.password, sizeof(settings->redis.password)}
+    };
+    const U32Field u32_fields[] = {
+        {"runtime.tick_ms", 0u, 1000u, &settings->runtime.tick_ms},
+        {"runtime.timer_max_count", 1u, 1048576u, &settings->runtime.timer_max_count},
+        {"runtime.message_tick_hz", 1u, 1000u, &settings->runtime.message_tick_hz},
+        {"runtime.message_max_per_tick", 1u, 100000u, &settings->runtime.message_max_per_tick},
+        {"runtime.message_queue_capacity", 1u, 1048576u, &settings->runtime.message_queue_capacity},
+        {"mysql.port", 1u, 65535u, &settings->mysql.port},
+        {"mysql.worker_count", 1u, 32u, &settings->mysql.worker_count},
+        {"mysql.queue_capacity", 1u, 1048576u, &settings->mysql.queue_capacity},
+        {"redis.port", 1u, 65535u, &settings->redis.port},
+        {"redis.connect_timeout_ms", 1u, 60000u, &settings->redis.connect_timeout_ms},
+        {"redis.command_timeout_ms", 0u, 60000u, &settings->redis.command_timeout_ms},
+        {"id.node_id", 0u, ABE_SNOWFLAKE_MAX_NODE_ID, &settings->id.node_id}
+    };
+    const I32Field i32_fields[] = {
+        {"log.utc_offset_minutes", -840, 840, &settings->log.utc_offset_minutes},
+        {"redis.database", 0, 255, &settings->redis.database}
+    };
+    const U64Field u64_fields[] = {
+        {
+            "redis.memory_pool_capacity",
+            0u,
+            0xffffffffffffffffull,
+            &settings->redis.memory_pool_capacity
+        }
+    };
+
+    for (index = 0u; index < sizeof(string_fields) / sizeof(string_fields[0]); ++index) {
+        const char* value;
+
+        value = NULL;
+        rc = abe_config_get_string(config, string_fields[index].path, &value);
+        if (rc == ABE_CONFIG_NOT_FOUND) {
+            continue;
+        }
+        if (rc != ABE_CONFIG_OK) {
+            ABE_LOG_ERROR(
+                "invalid string config value path=%s status=%s",
+                string_fields[index].path,
+                abe_status_name(SERVICE_STATUS_INVALID_ARG));
+            return SERVICE_STATUS_INVALID_ARG;
+        }
+        rc = copy_setting_text(
+            string_fields[index].path,
+            value,
+            string_fields[index].value,
+            string_fields[index].value_size);
+        if (rc != SERVICE_STATUS_OK) {
+            return rc;
+        }
     }
 
-    rc = read_config_u32(config, "redis.enable", 0u, 1u, &settings->redis_enable);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
+    for (index = 0u; index < sizeof(u32_fields) / sizeof(u32_fields[0]); ++index) {
+        uint64_t value;
+
+        value = 0u;
+        rc = abe_config_get_u64(config, u32_fields[index].path, &value);
+        if (rc == ABE_CONFIG_NOT_FOUND) {
+            continue;
+        }
+        if (rc != ABE_CONFIG_OK ||
+            value < u32_fields[index].min_value ||
+            value > u32_fields[index].max_value) {
+            ABE_LOG_ERROR(
+                "invalid unsigned config value path=%s status=%s",
+                u32_fields[index].path,
+                abe_status_name(SERVICE_STATUS_INVALID_ARG));
+            return SERVICE_STATUS_INVALID_ARG;
+        }
+        *u32_fields[index].value = (uint32_t)value;
     }
-    rc = read_config_string(config, "redis.host", &settings->redis_host);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
+
+    for (index = 0u; index < sizeof(i32_fields) / sizeof(i32_fields[0]); ++index) {
+        int64_t value;
+
+        value = 0;
+        rc = abe_config_get_i64(config, i32_fields[index].path, &value);
+        if (rc == ABE_CONFIG_NOT_FOUND) {
+            continue;
+        }
+        if (rc != ABE_CONFIG_OK ||
+            value < i32_fields[index].min_value ||
+            value > i32_fields[index].max_value) {
+            ABE_LOG_ERROR(
+                "invalid signed config value path=%s status=%s",
+                i32_fields[index].path,
+                abe_status_name(SERVICE_STATUS_INVALID_ARG));
+            return SERVICE_STATUS_INVALID_ARG;
+        }
+        *i32_fields[index].value = (int32_t)value;
     }
-    rc = read_config_u32(config, "redis.port", 1u, 65535u, &settings->redis_port);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
+
+    for (index = 0u; index < sizeof(u64_fields) / sizeof(u64_fields[0]); ++index) {
+        uint64_t value;
+
+        value = 0u;
+        rc = abe_config_get_u64(config, u64_fields[index].path, &value);
+        if (rc == ABE_CONFIG_NOT_FOUND) {
+            continue;
+        }
+        if (rc != ABE_CONFIG_OK ||
+            value < u64_fields[index].min_value ||
+            value > u64_fields[index].max_value) {
+            ABE_LOG_ERROR(
+                "invalid unsigned config value path=%s status=%s",
+                u64_fields[index].path,
+                abe_status_name(SERVICE_STATUS_INVALID_ARG));
+            return SERVICE_STATUS_INVALID_ARG;
+        }
+        *u64_fields[index].value = value;
     }
-    rc = read_config_string(config, "redis.password", &settings->redis_password);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_i32(config, "redis.database", 0, 255, &settings->redis_database);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config,
-        "redis.connect_timeout_ms",
-        0u,
-        60000u,
-        &settings->redis_connect_timeout_ms);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u32(
-        config,
-        "redis.command_timeout_ms",
-        0u,
-        60000u,
-        &settings->redis_command_timeout_ms);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = read_config_u64(
-        config,
-        "redis.memory_pool_capacity",
-        0u,
-        0xffffffffffffffffull,
-        &settings->redis_memory_pool_capacity);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    return read_config_u32(
-        config,
-        "id.node_id",
-        0u,
-        ABE_SNOWFLAKE_MAX_NODE_ID,
-        &settings->id_node_id);
+
+    return SERVICE_STATUS_OK;
 }
 
 static int init_log(
@@ -761,22 +684,22 @@ static int init_log(
         return SERVICE_STATUS_INVALID_ARG;
     }
 
-    log_output = config->log_output == NULL ? "console" : config->log_output;
+    log_output = config->log.output[0] == '\0' ? "console" : config->log.output;
     if (strcmp(log_output, "console") == 0) {
         rc = abe::log::init_console(service_name);
     } else if (strcmp(log_output, "file") == 0) {
-        if (config->log_file == NULL || config->log_file[0] == '\0') {
+        if (config->log.file[0] == '\0') {
             ABE_LOG_ERROR(
                 "service log file path is required when log-output=file status=%s",
                 abe_status_name(SERVICE_STATUS_INVALID_ARG));
             return SERVICE_STATUS_INVALID_ARG;
         }
-        rc = abe::log::init_file(service_name, config->log_file, false);
+        rc = abe::log::init_file(service_name, config->log.file, false);
     } else if (strcmp(log_output, "daily") == 0) {
         rc = abe::log::init_daily_file(
             service_name,
-            config->log_dir == NULL ? "logs" : config->log_dir,
-            config->log_utc_offset_minutes);
+            config->log.dir[0] == '\0' ? "logs" : config->log.dir,
+            config->log.utc_offset_minutes);
     } else {
         ABE_LOG_ERROR(
             "unknown log output value=%s status=%s",
@@ -794,11 +717,11 @@ static int init_log(
         return SERVICE_STATUS_FAILED;
     }
 
-    rc = parse_log_level(config->log_level, &log_level);
+    rc = parse_log_level(config->log.level, &log_level);
     if (rc != SERVICE_STATUS_OK) {
         ABE_LOG_ERROR(
             "unknown log level value=%s status=%s",
-            config->log_level == NULL ? "" : config->log_level,
+            config->log.level,
             abe_status_name(SERVICE_STATUS_INVALID_ARG));
         return SERVICE_STATUS_INVALID_ARG;
     }
@@ -817,104 +740,114 @@ static int init_mysql(
     const ServiceSettings* config,
     abe_db_mysql_async_t** out_mysql)
 {
-#ifdef ABE_SERVICE_HAS_MYSQL
     abe_db_mysql_async_config_t mysql_config;
     int rc;
-#endif
 
-    if (out_mysql == NULL) {
+    if (config == NULL || out_mysql == NULL) {
         return SERVICE_STATUS_INVALID_ARG;
     }
     *out_mysql = NULL;
 
-    if (config == NULL || config->mysql_enable == 0u) {
-        return SERVICE_STATUS_OK;
-    }
-
-#ifndef ABE_SERVICE_HAS_MYSQL
-    ABE_LOG_ERROR("mysql backend is not available in this build");
-    return SERVICE_STATUS_FAILED;
-#else
     memset(&mysql_config, 0, sizeof(mysql_config));
-    mysql_config.mysql.host = config->mysql_host;
-    mysql_config.mysql.port = (uint16_t)config->mysql_port;
-    mysql_config.mysql.database = config->mysql_database;
-    mysql_config.mysql.user = config->mysql_user;
-    mysql_config.mysql.password = config->mysql_password;
+    mysql_config.mysql.host = config->mysql.host;
+    mysql_config.mysql.port = (uint16_t)config->mysql.port;
+    mysql_config.mysql.database = config->mysql.database;
+    mysql_config.mysql.user = config->mysql.user;
+    mysql_config.mysql.password = config->mysql.password;
     mysql_config.mysql.charset = "utf8mb4";
     mysql_config.mysql.connect_timeout_seconds = 5u;
     mysql_config.mysql.read_timeout_seconds = 5u;
     mysql_config.mysql.write_timeout_seconds = 5u;
     mysql_config.mysql.reconnect = 1;
-    mysql_config.worker_count = config->mysql_worker_count;
-    mysql_config.queue_capacity = config->mysql_queue_capacity;
+    mysql_config.worker_count = config->mysql.worker_count;
+    mysql_config.queue_capacity = config->mysql.queue_capacity;
 
     rc = abe_db_mysql_async_create(&mysql_config, out_mysql);
     if (rc != ABE_DB_OK) {
         ABE_LOG_ERROR("mysql async connect failed rc=%d host=%s port=%u database=%s",
             rc,
-            config->mysql_host == NULL ? "" : config->mysql_host,
-            config->mysql_port,
-            config->mysql_database == NULL ? "" : config->mysql_database);
+            config->mysql.host,
+            config->mysql.port,
+            config->mysql.database);
         return SERVICE_STATUS_FAILED;
     }
 
     ABE_LOG_INFO("mysql async connected host=%s port=%u database=%s workers=%u",
-        config->mysql_host == NULL ? "" : config->mysql_host,
-        config->mysql_port,
-        config->mysql_database == NULL ? "" : config->mysql_database,
-        config->mysql_worker_count);
+        config->mysql.host,
+        config->mysql.port,
+        config->mysql.database,
+        config->mysql.worker_count);
     return SERVICE_STATUS_OK;
-#endif
 }
 
 static int init_redis(
     const ServiceSettings* config,
     abe_redis_async_t** out_redis)
 {
-#ifdef ABE_SERVICE_HAS_REDIS
     abe_redis_config_t redis_config;
+    uint64_t start_ms;
+    uint64_t now_ms;
     int rc;
-#endif
 
-    if (out_redis == NULL) {
+    if (config == NULL || out_redis == NULL) {
         return SERVICE_STATUS_INVALID_ARG;
     }
     *out_redis = NULL;
 
-    if (config == NULL || config->redis_enable == 0u) {
-        return SERVICE_STATUS_OK;
-    }
-
-#ifndef ABE_SERVICE_HAS_REDIS
-    ABE_LOG_ERROR("redis backend is not available in this build");
-    return SERVICE_STATUS_FAILED;
-#else
     memset(&redis_config, 0, sizeof(redis_config));
-    redis_config.host = config->redis_host;
-    redis_config.port = (uint16_t)config->redis_port;
-    redis_config.password = config->redis_password;
-    redis_config.database = config->redis_database;
-    redis_config.connect_timeout_ms = config->redis_connect_timeout_ms;
-    redis_config.command_timeout_ms = config->redis_command_timeout_ms;
-    redis_config.memory_pool_capacity = config->redis_memory_pool_capacity;
+    redis_config.host = config->redis.host;
+    redis_config.port = (uint16_t)config->redis.port;
+    redis_config.password = config->redis.password;
+    redis_config.database = config->redis.database;
+    redis_config.connect_timeout_ms = config->redis.connect_timeout_ms;
+    redis_config.command_timeout_ms = config->redis.command_timeout_ms;
+    redis_config.memory_pool_capacity = config->redis.memory_pool_capacity;
 
     rc = abe_redis_async_create(&redis_config, out_redis);
     if (rc != ABE_REDIS_OK) {
         ABE_LOG_ERROR("redis async connect failed rc=%d host=%s port=%u database=%d",
             rc,
-            config->redis_host == NULL ? "" : config->redis_host,
-            config->redis_port,
-            config->redis_database);
+            config->redis.host,
+            config->redis.port,
+            config->redis.database);
         return SERVICE_STATUS_FAILED;
     }
 
-    ABE_LOG_INFO("redis async connecting host=%s port=%u database=%d",
-        config->redis_host == NULL ? "" : config->redis_host,
-        config->redis_port,
-        config->redis_database);
+    start_ms = abe_time_mono_ms();
+    for (;;) {
+        rc = abe_redis_async_update(*out_redis);
+        if (rc != ABE_REDIS_OK) {
+            ABE_LOG_ERROR("redis async init update failed rc=%d error=%s",
+                rc,
+                abe_redis_async_last_error(*out_redis));
+            abe_redis_async_destroy(*out_redis);
+            *out_redis = NULL;
+            return SERVICE_STATUS_FAILED;
+        }
+        if (abe_redis_async_ready(*out_redis)) {
+            break;
+        }
+
+        now_ms = abe_time_mono_ms();
+        if (now_ms >= start_ms &&
+            now_ms - start_ms >= config->redis.connect_timeout_ms) {
+            ABE_LOG_ERROR("redis async init timeout host=%s port=%u database=%d error=%s",
+                config->redis.host,
+                config->redis.port,
+                config->redis.database,
+                abe_redis_async_last_error(*out_redis));
+            abe_redis_async_destroy(*out_redis);
+            *out_redis = NULL;
+            return SERVICE_STATUS_FAILED;
+        }
+        usleep(1000u);
+    }
+
+    ABE_LOG_INFO("redis async connected host=%s port=%u database=%d",
+        config->redis.host,
+        config->redis.port,
+        config->redis.database);
     return SERVICE_STATUS_OK;
-#endif
 }
 
 static int init_time_wheel(
@@ -930,14 +863,14 @@ static int init_time_wheel(
     }
     *out_time_wheel = NULL;
 
-    timer_max_count = config == NULL || config->timer_max_count == 0u
+    timer_max_count = config == NULL || config->runtime.timer_max_count == 0u
         ? SERVICE_RUNTIME_DEFAULT_TIMER_MAX_COUNT
-        : config->timer_max_count;
+        : config->runtime.timer_max_count;
 
     memset(&wheel_config, 0, sizeof(wheel_config));
     wheel_config.tick_ms = config == NULL
         ? SERVICE_RUNTIME_DEFAULT_TICK_MS
-        : config->tick_ms;
+        : config->runtime.tick_ms;
     wheel_config.max_timer_count = timer_max_count;
     wheel_config.name = "service_time_wheel";
 
@@ -967,9 +900,9 @@ static int init_message_queue(
         return SERVICE_STATUS_INVALID_ARG;
     }
 
-    capacity = config == NULL || config->message_queue_capacity == 0u
+    capacity = config == NULL || config->runtime.message_queue_capacity == 0u
         ? SERVICE_RUNTIME_DEFAULT_MESSAGE_QUEUE_CAPACITY
-        : config->message_queue_capacity;
+        : config->runtime.message_queue_capacity;
     rc = queue->init(capacity);
     if (rc != SERVICE_STATUS_OK) {
         ABE_LOG_ERROR("service message queue init failed rc=%d status=%s capacity=%u",
@@ -988,19 +921,19 @@ static uint32_t message_tick_interval_ms(const ServiceSettings* config)
     uint32_t tick_hz;
     uint32_t interval_ms;
 
-    tick_hz = config == NULL || config->message_tick_hz == 0u
+    tick_hz = config == NULL || config->runtime.message_tick_hz == 0u
         ? SERVICE_RUNTIME_DEFAULT_MESSAGE_TICK_HZ
-        : config->message_tick_hz;
+        : config->runtime.message_tick_hz;
     interval_ms = 1000u / tick_hz;
     return interval_ms == 0u ? 1u : interval_ms;
 }
 
 static uint32_t message_max_per_tick(const ServiceSettings* config)
 {
-    if (config == NULL || config->message_max_per_tick == 0u) {
+    if (config == NULL || config->runtime.message_max_per_tick == 0u) {
         return SERVICE_RUNTIME_DEFAULT_MESSAGE_MAX_PER_TICK;
     }
-    return config->message_max_per_tick;
+    return config->runtime.message_max_per_tick;
 }
 
 static int update_message_queue(
@@ -1059,7 +992,7 @@ static int run_loop(
 
     tick_ms = settings == NULL
         ? SERVICE_RUNTIME_DEFAULT_TICK_MS
-        : settings->tick_ms;
+        : settings->runtime.tick_ms;
     next_message_tick_ms = abe_time_mono_ms();
 
     result = SERVICE_STATUS_OK;
@@ -1096,29 +1029,21 @@ static int run_loop(
             break;
         }
 
-#ifdef ABE_SERVICE_HAS_MYSQL
-        if (context->mysql != NULL) {
-            rc = abe_db_mysql_async_update(context->mysql, 0u, NULL);
-            if (rc != ABE_DB_OK) {
-                ABE_LOG_ERROR("service mysql async update failed rc=%d", rc);
-                result = rc;
-                break;
-            }
+        rc = abe_db_mysql_async_update(context->mysql, 0u, NULL);
+        if (rc != ABE_DB_OK) {
+            ABE_LOG_ERROR("service mysql async update failed rc=%d", rc);
+            result = rc;
+            break;
         }
-#endif
 
-#ifdef ABE_SERVICE_HAS_REDIS
-        if (context->redis != NULL) {
-            rc = abe_redis_async_update(context->redis);
-            if (rc != ABE_REDIS_OK) {
-                ABE_LOG_ERROR("service redis async update failed rc=%d error=%s",
-                    rc,
-                    abe_redis_async_last_error(context->redis));
-                result = rc;
-                break;
-            }
+        rc = abe_redis_async_update(context->redis);
+        if (rc != ABE_REDIS_OK) {
+            ABE_LOG_ERROR("service redis async update failed rc=%d error=%s",
+                rc,
+                abe_redis_async_last_error(context->redis));
+            result = rc;
+            break;
         }
-#endif
 
         rc = service.update(now_ms);
         if (rc != SERVICE_STATUS_OK) {
@@ -1161,7 +1086,7 @@ int run(Service& service)
     }
     log_ready = init_startup_log(service_name);
 
-    set_runtime_defaults(service_name, &settings);
+    apply_dynamic_defaults(&settings);
     service.defaults();
 
     config_path = service.config_path();
@@ -1198,9 +1123,9 @@ int run(Service& service)
     }
 
     id_generator = NULL;
-    rc = abe_snowflake_create((uint16_t)settings.id_node_id, &id_generator);
+    rc = abe_snowflake_create((uint16_t)settings.id.node_id, &id_generator);
     if (rc != ABE_SNOWFLAKE_OK) {
-        ABE_LOG_ERROR("snowflake init failed rc=%d node_id=%u", rc, settings.id_node_id);
+        ABE_LOG_ERROR("snowflake init failed rc=%d node_id=%u", rc, settings.id.node_id);
         abe::log::shutdown();
         if (config != NULL) {
             abe_config_destroy(config);
@@ -1222,13 +1147,9 @@ int run(Service& service)
     redis = NULL;
     rc = init_redis(&settings, &redis);
     if (rc != SERVICE_STATUS_OK) {
-#ifdef ABE_SERVICE_HAS_MYSQL
         if (mysql != NULL) {
             abe_db_mysql_async_destroy(mysql);
         }
-#else
-        (void)mysql;
-#endif
         abe_snowflake_destroy(id_generator);
         abe::log::shutdown();
         if (config != NULL) {
@@ -1292,20 +1213,12 @@ int run(Service& service)
     if (loop_ready) {
         loop.destroy();
     }
-#ifdef ABE_SERVICE_HAS_REDIS
     if (redis != NULL) {
         abe_redis_async_destroy(redis);
     }
-#else
-    (void)redis;
-#endif
-#ifdef ABE_SERVICE_HAS_MYSQL
     if (mysql != NULL) {
         abe_db_mysql_async_destroy(mysql);
     }
-#else
-    (void)mysql;
-#endif
     abe_snowflake_destroy(id_generator);
     if (config != NULL) {
         abe_config_destroy(config);

@@ -1,5 +1,5 @@
 add_library(abe_login_server STATIC
-    abe_login_manager.cpp
+    abe_login_process.cpp
     abe_login_server.cpp
 )
 

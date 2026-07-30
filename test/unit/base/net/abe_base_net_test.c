@@ -10,11 +10,16 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
+enum {
+    ABE_NET_TEST_STATUS_OK = 0,
+    ABE_NET_TEST_STATUS_FAILED = 1
+};
+
 #define TEST_REQUIRE(expr) \
     do { \
         if (!(expr)) { \
             fprintf(stderr, "%s:%d: requirement failed: %s\n", __FILE__, __LINE__, #expr); \
-            return 1; \
+            return ABE_NET_TEST_STATUS_FAILED; \
         } \
     } while (0)
 
@@ -29,6 +34,7 @@ struct runtime_state {
     int tcp_client_got;
     int udp_got;
     int oversized_error_got;
+    int invalid_length_error_got;
     int failed_line;
 };
 
@@ -177,6 +183,15 @@ static void on_tcp_event(
         return;
     }
 
+    if (event == ABE_NET_TCP_EVENT_ERROR &&
+        conn == state->server &&
+        error_code == ABE_NET_INVALID_LENGTH) {
+        state->invalid_length_error_got = 1;
+        state->server = NULL;
+        (void)abe_net_loop_stop(state->loop);
+        return;
+    }
+
     if (event == ABE_NET_TCP_EVENT_CLOSED || event == ABE_NET_TCP_EVENT_ERROR) {
         if (conn == state->client) {
             state->client = NULL;
@@ -243,6 +258,14 @@ static int test_packet_helpers(void)
     TEST_REQUIRE(rc == ABE_NET_OK);
     TEST_REQUIRE(payload_size == 5u);
 
+    packet_size = 0u;
+    rc = abe_net_packet_encode(NULL, 0u, packet, sizeof(packet), &packet_size);
+    TEST_REQUIRE(rc == ABE_NET_INVALID_LENGTH);
+
+    memset(packet, 0, ABE_NET_PACKET_HEADER_SIZE);
+    rc = abe_net_packet_peek_size(packet, ABE_NET_PACKET_HEADER_SIZE, &payload_size);
+    TEST_REQUIRE(rc == ABE_NET_INVALID_LENGTH);
+
     rc = abe_net_packet_peek_size(short_buffer, sizeof(short_buffer), &payload_size);
     TEST_REQUIRE(rc == ABE_NET_WOULD_BLOCK);
 
@@ -262,7 +285,7 @@ static int test_packet_helpers(void)
         &packet_size);
     TEST_REQUIRE(rc == ABE_NET_PACKET_TOO_LARGE);
 
-    return 0;
+    return ABE_NET_TEST_STATUS_OK;
 }
 
 static int start_listener(struct runtime_state* state, uint16_t port)
@@ -302,7 +325,7 @@ static int test_tcp_udp_runtime(void)
     if (rc != ABE_NET_OK) {
         cleanup_runtime(&state);
         fprintf(stderr, "failed to listen on tcp port %u\n", (unsigned int)tcp_port);
-        return 1;
+        return ABE_NET_TEST_STATUS_FAILED;
     }
 
     memset(&tcp_client_config, 0, sizeof(tcp_client_config));
@@ -335,7 +358,7 @@ static int test_tcp_udp_runtime(void)
     TEST_REQUIRE(state.udp_got);
 
     cleanup_runtime(&state);
-    return 0;
+    return ABE_NET_TEST_STATUS_OK;
 }
 
 static int connect_raw_tcp(uint16_t port)
@@ -398,7 +421,7 @@ static int test_tcp_oversized_packet(void)
     if (rc != ABE_NET_OK) {
         cleanup_runtime(&state);
         fprintf(stderr, "failed to listen on tcp port %u\n", (unsigned int)tcp_port);
-        return 1;
+        return ABE_NET_TEST_STATUS_FAILED;
     }
 
     fd = connect_raw_tcp(tcp_port);
@@ -411,7 +434,40 @@ static int test_tcp_oversized_packet(void)
     TEST_REQUIRE(state.oversized_error_got);
 
     cleanup_runtime(&state);
-    return 0;
+    return ABE_NET_TEST_STATUS_OK;
+}
+
+static int test_tcp_zero_payload_packet(void)
+{
+    struct runtime_state state;
+    unsigned char header[ABE_NET_PACKET_HEADER_SIZE] = {0u, 0u, 0u, 0u};
+    uint16_t tcp_port;
+    int fd;
+    int rc;
+
+    memset(&state, 0, sizeof(state));
+    TEST_REQUIRE(abe_net_loop_create(&state.loop) == ABE_NET_OK);
+
+    tcp_port = test_port(401u);
+    rc = start_listener(&state, tcp_port);
+    if (rc != ABE_NET_OK) {
+        cleanup_runtime(&state);
+        fprintf(stderr, "failed to listen on tcp port %u\n", (unsigned int)tcp_port);
+        return ABE_NET_TEST_STATUS_FAILED;
+    }
+
+    fd = connect_raw_tcp(tcp_port);
+    TEST_REQUIRE(fd >= 0);
+    TEST_REQUIRE(write_all(fd, header, sizeof(header)) == ABE_NET_OK);
+    TEST_REQUIRE(abe_net_loop_run(state.loop) == ABE_NET_OK);
+    close(fd);
+
+    TEST_REQUIRE(state.failed_line == 0);
+    TEST_REQUIRE(state.invalid_length_error_got);
+    TEST_REQUIRE(!state.tcp_server_got);
+
+    cleanup_runtime(&state);
+    return ABE_NET_TEST_STATUS_OK;
 }
 
 int main(void)
@@ -419,15 +475,18 @@ int main(void)
     signal(SIGALRM, SIG_DFL);
     alarm(10u);
 
-    if (test_packet_helpers() != 0) {
-        return 1;
+    if (test_packet_helpers() != ABE_NET_TEST_STATUS_OK) {
+        return ABE_NET_TEST_STATUS_FAILED;
     }
-    if (test_tcp_udp_runtime() != 0) {
-        return 1;
+    if (test_tcp_udp_runtime() != ABE_NET_TEST_STATUS_OK) {
+        return ABE_NET_TEST_STATUS_FAILED;
     }
-    if (test_tcp_oversized_packet() != 0) {
-        return 1;
+    if (test_tcp_oversized_packet() != ABE_NET_TEST_STATUS_OK) {
+        return ABE_NET_TEST_STATUS_FAILED;
+    }
+    if (test_tcp_zero_payload_packet() != ABE_NET_TEST_STATUS_OK) {
+        return ABE_NET_TEST_STATUS_FAILED;
     }
 
-    return 0;
+    return ABE_NET_TEST_STATUS_OK;
 }

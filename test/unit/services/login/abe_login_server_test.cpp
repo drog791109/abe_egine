@@ -83,6 +83,10 @@ static int test_login_server_success_and_reconnect(void)
     TEST_REQUIRE(response.player().uid() != 0u);
     TEST_REQUIRE(response.account_info().account_name() == "alice01");
     TEST_REQUIRE(response.account_info().nickname() == "Alice");
+    TEST_REQUIRE(response.player_data().player().uid() == response.player().uid());
+    TEST_REQUIRE(response.player_data().player().open_id() == "alice01");
+    TEST_REQUIRE(response.player_data().nickname() == "Alice");
+    TEST_REQUIRE(response.player_data().level() == 1u);
     TEST_REQUIRE(response.session_token().empty() == false);
     strncpy(token, response.session_token().c_str(), sizeof(token));
     token[sizeof(token) - 1u] = '\0';
@@ -128,12 +132,66 @@ static int test_login_server_rejects_bad_inputs(void)
     return ABE_TEST_STATUS_OK;
 }
 
+static int test_login_server_character_handlers(void)
+{
+    abe_snowflake_t* id_generator;
+    login::LoginServer server;
+    proto::PB_CS_CREATE_CHARACTOR create_request;
+    proto::PB_SC_CREATE_CHARACTOR create_response;
+    proto::PB_CS_SELECT_CHARACTOR select_request;
+    proto::PB_SC_SELECT_CHARACTOR select_response;
+    proto::PB_CS_DELETE_CHARACTOR delete_request;
+    proto::PB_SC_DELETE_CHARACTOR delete_response;
+
+    id_generator = NULL;
+    TEST_REQUIRE(abe_snowflake_create(23u, &id_generator) == ABE_OK);
+    TEST_REQUIRE(init_login_server(&server, id_generator) == ABE_TEST_STATUS_OK);
+
+    create_request.mutable_header()->set_protocol_id(proto::CS_CREATE_CHARACTOR);
+    create_request.mutable_header()->set_seq(201u);
+    TEST_REQUIRE(server.handle_create_charactor(
+            1u,
+            11u,
+            create_request,
+            &create_response,
+            1000u) == proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
+    TEST_REQUIRE(create_response.header().protocol_id() == proto::SC_CREATE_CHARACTOR);
+    TEST_REQUIRE(create_response.header().seq() == 201u);
+    TEST_REQUIRE(create_response.result().error_code() ==
+        proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
+
+    select_request.mutable_header()->set_protocol_id(proto::CS_SELECT_CHARACTOR);
+    TEST_REQUIRE(server.handle_select_charactor(
+            1u,
+            11u,
+            select_request,
+            &select_response,
+            1010u) == proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
+    TEST_REQUIRE(select_response.header().protocol_id() == proto::SC_SELECT_CHARACTOR);
+
+    delete_request.mutable_header()->set_protocol_id(proto::CS_DELETE_CHARACTOR);
+    TEST_REQUIRE(server.handle_delete_charactor(
+            1u,
+            11u,
+            delete_request,
+            &delete_response,
+            1020u) == proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
+    TEST_REQUIRE(delete_response.header().protocol_id() == proto::SC_DELETE_CHARACTOR);
+
+    server.close(2000u);
+    abe_snowflake_destroy(id_generator);
+    return ABE_TEST_STATUS_OK;
+}
+
 int main()
 {
     if (test_login_server_success_and_reconnect() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_login_server_rejects_bad_inputs() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+    if (test_login_server_character_handlers() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     return ABE_TEST_STATUS_OK;

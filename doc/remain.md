@@ -4,7 +4,7 @@ flowchart TD
 
     Runtime --> Config[固定 JSON 配置加载]
     Runtime --> Log[日志初始化]
-    Runtime --> DB[可选 MySQL 初始化]
+    Runtime --> DB[必需 MySQL/Redis 初始化]
     Runtime --> Loop[adapter/net::Loop<br/>libevent 事件循环]
 
     Runtime -- runtime_handler 回调 --> GatewayServer[GatewayServer]
@@ -13,9 +13,9 @@ flowchart TD
     TcpServer --> TcpLink[TcpLink slots]
     TcpServer --> BaseNet[engine/base/net<br/>libevent C API]
 
-    GatewayServer --> SessionServer[logic/session::SessionServer]
+    GatewayServer --> SessionServer[service/session::SessionServer]
     SessionServer --> GatewaySession[GatewaySession slots]
-    GatewaySession -- 继承 --> Session[logic/session::Session]
+    GatewaySession -- 继承 --> Session[service/session::Session]
 
     GatewayServer --> Protocol[engine/common/protocol<br/>MsgHeader 解码]
 ```
@@ -26,7 +26,7 @@ sequenceDiagram
     participant GatewayServer
     participant SessionServer
     participant GatewaySession
-    participant LogicSession as logic/session::Session
+    participant ServiceSession as service/session::Session
 
     Client->>TcpServer: TCP connect
     TcpServer->>GatewayServer: on_connect(link)
@@ -39,9 +39,9 @@ sequenceDiagram
     Runtime->>GatewayServer: process_message(message)
     GatewayServer->>GatewaySession: handle_packet(packet)
     GatewaySession->>GatewaySession: abe_msg_packet_decode()
-    GatewaySession->>LogicSession: Session handler dispatch
+    GatewaySession->>ServiceSession: Session handler dispatch
 
-    LogicSession->>GatewaySession: send(data)
+    ServiceSession->>GatewaySession: send(data)
     GatewaySession->>TcpServer: TcpLink::send(data)
     TcpServer->>Client: TCP packet
 
@@ -53,5 +53,5 @@ sequenceDiagram
 
 还有几个问题
 1.使用雪花生成全区全服的唯一id
-2.还有user_data改名player_data,因为user和account是平级关系，容易混淆
+2.login 业务侧已拆分 account_data 和 player_data；底层通用 callback 的 void* user_data 按 C API 约定保留
 3.mysql和redis的异步访问

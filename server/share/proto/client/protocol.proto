@@ -14,41 +14,52 @@ enum ProtocolId {
   UDP_PONG = 9004;
   SS_BROADCAST_PACKET = 9005;
 
-  CS_LOGIN_REQ = 10001;
-  SC_LOGIN_RESP = 10002;
-  CS_HEARTBEAT = 10003;
-  SC_KICK_NOTIFY = 10004;
-  SC_HEARTBEAT = 10005;
-  SC_ERROR_RESP = 10006;
-  CS_HORN_REQ = 10007;
-  SC_HORN_NOTIFY = 10008;
+  // The interaction messages between the client and the server
+  // gateway message
+  CS_PING = 10001;
+  SC_PONG = 10002;
+  SC_ERROR_NOTIFY = 10003;
 
-  CS_ENTER_LOBBY_REQ = 11001;
-  SC_ENTER_LOBBY_RESP = 11002;
-  CS_ROOM_LIST_REQ = 11003;
-  SC_ROOM_LIST_RESP = 11004;
-  CS_CREATE_ROOM_REQ = 11005;
-  SC_CREATE_ROOM_RESP = 11006;
-  CS_JOIN_ROOM_REQ = 11007;
-  SC_JOIN_ROOM_RESP = 11008;
+  // login message
+  CS_LOGIN_REQ = 11001;
+  SC_LOGIN_RESP = 11002;
+  SC_KICK_NOTIFY = 11005;
+  CS_CREATE_CHARACTOR = 11006;
+  SC_CREATE_CHARACTOR = 11007;
+  CS_SELECT_CHARACTOR = 11008;
+  SC_SELECT_CHARACTOR = 11009;
+  CS_DELETE_CHARACTOR = 11010;
+  SC_DELETE_CHARACTOR = 11011;
 
-  CS_UPDATE_ROOM_STATE_REQ = 11030;
-  SC_UPDATE_ROOM_STATE_RESP = 11031;
-  CS_FETCH_ROOM_ARCHIVE_REQ = 11032;
-  SC_FETCH_ROOM_ARCHIVE_RESP = 11033;
-  SC_ROOM_MEMBERS_NOTIFY = 11034;
-  CS_LOBBY_CHAT_REQ = 11035;
-  SC_LOBBY_CHAT_NOTIFY = 11036;
+  // lobby message
+  CS_ENTER_LOBBY_REQ = 12001;
+  SC_ENTER_LOBBY_RESP = 12002;
+  CS_ROOM_LIST_REQ = 12003;
+  SC_ROOM_LIST_RESP = 12004;
+  CS_CREATE_ROOM_REQ = 12005;
+  SC_CREATE_ROOM_RESP = 12006;
+  CS_JOIN_ROOM_REQ = 12007;
+  SC_JOIN_ROOM_RESP = 12008;
 
-  CS_ENTER_GAME_REQ = 12001;
-  SC_ENTER_GAME_RESP = 12002;
-  CS_LEAVE_GAME_REQ = 12003;
-  CS_GAME_ACTION_REQ = 12004;
-  SC_GAME_ACTION_BROADCAST = 12005;
-  CS_ROOM_CHAT_REQ = 12006;
-  SC_ROOM_CHAT_NOTIFY = 12007;
-  SC_GAME_OVER_NOTIFY = 12098;
-  SC_LEAVE_GAME_RESP = 12099;
+  CS_UPDATE_ROOM_STATE_REQ = 12030;
+  SC_UPDATE_ROOM_STATE_RESP = 12031;
+  CS_FETCH_ROOM_ARCHIVE_REQ = 12032;
+  SC_FETCH_ROOM_ARCHIVE_RESP = 12033;
+  SC_ROOM_MEMBERS_NOTIFY = 12034;
+  CS_LOBBY_CHAT_REQ = 12035;
+  SC_LOBBY_CHAT_NOTIFY = 12036;
+
+  // game message
+  CS_ENTER_GAME_REQ = 13001;
+  SC_ENTER_GAME_RESP = 13002;
+  CS_LEAVE_GAME_REQ = 13003;
+  CS_GAME_ACTION_REQ = 13004;
+  SC_GAME_ACTION_BROADCAST = 13005;
+  CS_ROOM_CHAT_REQ = 13006;
+  SC_ROOM_CHAT_NOTIFY = 13007;
+  SC_GAME_OVER_NOTIFY = 13098;
+  SC_LEAVE_GAME_RESP = 13099;
+
 }
 
 enum ErrorCode {
@@ -120,6 +131,15 @@ message PB_LOGIN_ACCOUNT_INFO {
   string region = 7;
   string device_id = 8;
   string client_version = 9;
+}
+
+message PB_LOGIN_PLAYER_DATA {
+  PB_PLAYER_ID player = 1;
+  string nickname = 2;
+  uint32 sex = 3;
+  uint32 avatar_id = 4;
+  uint32 level = 5;
+  string region = 6;
 }
 
 message PB_ROOM_ID {
@@ -204,6 +224,21 @@ message PB_SS_BROADCAST_PACKET {
   bytes payload = 4;
 }
 
+message PB_CS_PING {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 client_send_time_ms = 2;
+}
+
+message PB_SC_PONG {
+  PB_MESSAGE_HEADER header = 1;
+  uint64 server_send_time_ms = 2;
+}
+
+message PB_SC_ERROR_NOTIFY {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
+}
+
 message PB_CS_LOGIN_REQ {
   PB_MESSAGE_HEADER header = 1;
   string account = 2;
@@ -221,11 +256,7 @@ message PB_SC_LOGIN_RESP {
   string session_token = 4;
   uint64 session_expire_time_ms = 5;
   PB_LOGIN_ACCOUNT_INFO account_info = 6;
-}
-
-message PB_CS_HEARTBEAT {
-  PB_MESSAGE_HEADER header = 1;
-  uint64 client_send_time_ms = 2;
+  PB_LOGIN_PLAYER_DATA player_data = 7;
 }
 
 message PB_SC_KICK_NOTIFY {
@@ -234,28 +265,31 @@ message PB_SC_KICK_NOTIFY {
   string reason = 3;
 }
 
-message PB_SC_HEARTBEAT {
+message PB_CS_CREATE_CHARACTOR {
   PB_MESSAGE_HEADER header = 1;
-  uint64 server_send_time_ms = 2;
 }
 
-message PB_SC_ERROR_RESP {
+message PB_SC_CREATE_CHARACTOR {
   PB_MESSAGE_HEADER header = 1;
   PB_RESULT result = 2;
 }
 
-message PB_CS_HORN_REQ {
+message PB_CS_SELECT_CHARACTOR {
   PB_MESSAGE_HEADER header = 1;
-  uint64 uid = 2;
-  uint32 channel = 3;
-  string content = 4;
 }
 
-message PB_SC_HORN_NOTIFY {
+message PB_SC_SELECT_CHARACTOR {
   PB_MESSAGE_HEADER header = 1;
-  uint64 uid = 2;
-  uint32 channel = 3;
-  string content = 4;
+  PB_RESULT result = 2;
+}
+
+message PB_CS_DELETE_CHARACTOR {
+  PB_MESSAGE_HEADER header = 1;
+}
+
+message PB_SC_DELETE_CHARACTOR {
+  PB_MESSAGE_HEADER header = 1;
+  PB_RESULT result = 2;
 }
 
 message PB_CS_ENTER_LOBBY_REQ {

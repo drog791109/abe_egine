@@ -3,6 +3,7 @@
 
 #include "abe_service_runtime.h"
 #include "abe_snowflake.h"
+#include "protocol.pb.h"
 
 #include <stdint.h>
 
@@ -117,6 +118,73 @@ public:
     virtual int init(abe::service::common::Context& context);
     virtual int update(uint64_t now_ms);
     virtual void close(uint64_t now_ms);
+
+    int handle_enter_lobby(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_ENTER_LOBBY_REQ& request,
+        abe::proto::client::PB_SC_ENTER_LOBBY_RESP* out_response,
+        uint64_t now_ms);
+    int handle_room_list(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_ROOM_LIST_REQ& request,
+        abe::proto::client::PB_SC_ROOM_LIST_RESP* out_response,
+        uint64_t now_ms);
+    int handle_create_room(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_CREATE_ROOM_REQ& request,
+        abe::proto::client::PB_SC_CREATE_ROOM_RESP* out_response,
+        uint64_t now_ms);
+    int handle_join_room(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_JOIN_ROOM_REQ& request,
+        abe::proto::client::PB_SC_JOIN_ROOM_RESP* out_response,
+        uint64_t now_ms);
+    int handle_update_room_state(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_UPDATE_ROOM_STATE_REQ& request,
+        abe::proto::client::PB_SC_UPDATE_ROOM_STATE_RESP* out_response,
+        uint64_t now_ms);
+    int handle_fetch_room_archive(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_FETCH_ROOM_ARCHIVE_REQ& request,
+        abe::proto::client::PB_SC_FETCH_ROOM_ARCHIVE_RESP* out_response,
+        uint64_t now_ms);
+    int handle_lobby_chat(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_LOBBY_CHAT_REQ& request,
+        abe::proto::client::PB_SC_ERROR_NOTIFY* out_response,
+        uint64_t now_ms);
+    int handle_enter_game(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_ENTER_GAME_REQ& request,
+        abe::proto::client::PB_SC_ENTER_GAME_RESP* out_response,
+        uint64_t now_ms);
+    int handle_leave_game(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_LEAVE_GAME_REQ& request,
+        abe::proto::client::PB_SC_LEAVE_GAME_RESP* out_response,
+        uint64_t now_ms);
+    int handle_game_action(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_GAME_ACTION_REQ& request,
+        abe::proto::client::PB_SC_ERROR_NOTIFY* out_response,
+        uint64_t now_ms);
+    int handle_room_chat(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_ROOM_CHAT_REQ& request,
+        abe::proto::client::PB_SC_ERROR_NOTIFY* out_response,
+        uint64_t now_ms);
 
     GateHubRegistry* registry();
     const GateHubRegistry* registry() const;

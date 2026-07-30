@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 namespace abe {
-namespace logic {
+namespace service {
 namespace session {
 
 namespace proto = ::abe::proto::client;
@@ -346,5 +346,5 @@ Session* SessionServer::find_free_session()
 }
 
 } /* namespace session */
-} /* namespace logic */
+} /* namespace service */
 } /* namespace abe */

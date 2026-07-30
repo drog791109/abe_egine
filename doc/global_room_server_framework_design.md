@@ -602,7 +602,7 @@ void abe_pool_destroy(abe_pool_t* pool);
 
 1. `base/common` 定义稳定 C 接口，不暴露第三方类型，也不负责提供 C++ 便利封装。
 2. `backends` 负责接入原始第三方接口和实现 `base/common` 契约，例如使用 MySQL C API 实现数据库接口。
-3. `adapters` 只负责把已有 C 接口转换为不高于 C++11 的简单 RAII 和类接口，供 `logic/services` 使用；公共接口不暴露 STL。
+3. `adapters` 只负责把已有 C 接口转换为不高于 C++11 的简单 RAII 和类接口，供 `services` 使用；公共接口不暴露 STL。
 4. 第三方库本身是 C++ 且只有 C++ 模块使用时，C++ 模块可以使用其原生接口，不额外复制一套 C 封装。
 5. 当 C 基础设施确实需要一个 C++ 库作为实现时，在 `backends` 中提供范围最小的 C ABI 桥接，并保持实现可替换。
 
@@ -646,12 +646,10 @@ server/
         kafka/
       adapters/
         db_cpp/
-  logic/
-    room/
-    match/
-    session/
-    settlement/
   services/
+    common/
+      session/
+      store/
     gateway/
     lobby/
     coordinator/
@@ -680,7 +678,7 @@ doc/
 - `server/engine/src/log`：原生 C++ 日志库封装，提供不高于 C++11 的简单接口和 `ABE_LOG_*` 宏；可依赖 `base/time` 计算时间戳和日期目录，公共接口不暴露 spdlog 或 STL。
 - `server/engine/src/backends`：第三方原始接口和具体实现，例如 MySQL、Redis、RabbitMQ、Kafka；可依赖 `base/common`，不向其公共头暴露第三方类型。
 - `server/engine/src/adapters`：将 `base/common` C 接口适配为不高于 C++11 的简单 RAII 和类接口；不承载具体后端，公共接口不暴露 STL，也不得要求 C++14+。
-- `server/logic`：游戏业务逻辑和玩法模块，可使用 C++11+，可依赖 `base/common/log/adapters`，但不能反向污染基础设施编译标准，也不直接依赖具体 `backends`。
+- 独立逻辑层已移除：公共服务组件放入 `services/common`，具体业务编排放入对应服务模块。
 - `server/services`：可独立启动的服务进程入口和组装层，例如 Gateway、Lobby、Coordinator、Match、Session、Settlement；负责选择并链接具体后端。
 - `server/share/proto`：协议定义源文件。`client` 面向客户端协议，`internal` 面向服务间协议；生成代码后续可按语言和构建系统单独放入生成目录。
 
@@ -697,7 +695,7 @@ abe_engine_log          C++11 wrapper and macros over spdlog
 abe_common_db           C API, database contract
 abe_backend_db_mysql    C backend using MySQL C API
 abe_adapter_db_cpp      C++11-or-earlier simple RAII wrapper over abe_common_db
-abe_logic_room     C++11+ allowed
+abe_service_session     C++11 service component
 ```
 
 ### 9.4 进程模型

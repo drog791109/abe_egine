@@ -5,56 +5,70 @@
 
 #include "../../abe_test.h"
 
+#include <string>
 #include <stdint.h>
 #include <string.h>
 
 namespace gateway = abe::service::gateway;
 namespace net = abe::adapter::net;
 namespace proto = abe::proto::client;
-namespace session = abe::logic::session;
+namespace session = abe::service::session;
 
-struct MessageCounter {
-    uint32_t count;
-    uint32_t msg_id;
+struct SendCapture {
+    unsigned char data[ABE_MSG_HEADER_SIZE + 512u];
     uint32_t size;
-    uint64_t link_id;
+    uint32_t count;
 };
 
-static int on_message(
-    session::Session* current,
-    const session::SessionMessage* message,
-    void* user_data)
+class TestGatewaySession : public gateway::GatewaySession {
+public:
+    TestGatewaySession()
+        : capture(NULL)
+    {
+    }
+
+    void bind_capture(SendCapture* value)
+    {
+        capture = value;
+    }
+
+protected:
+    virtual int on_send(const void* data, uint32_t size)
+    {
+        TEST_REQUIRE(capture != NULL);
+        TEST_REQUIRE(data != NULL);
+        TEST_REQUIRE(size <= (uint32_t)sizeof(capture->data));
+
+        memcpy(capture->data, data, size);
+        capture->size = size;
+        ++capture->count;
+        return proto::ERROR_CODE_OK;
+    }
+
+private:
+    SendCapture* capture;
+};
+
+static int test_gateway_session_handles_ping(void)
 {
-    MessageCounter* counter;
-
-    counter = (MessageCounter*)user_data;
-    TEST_REQUIRE(current != NULL);
-    TEST_REQUIRE(message != NULL);
-    TEST_REQUIRE(counter != NULL);
-
-    ++counter->count;
-    counter->msg_id = message->message_id;
-    counter->size = message->size;
-    counter->link_id = current->link_id();
-    return proto::ERROR_CODE_OK;
-}
-
-static int test_gateway_session_routes_message(void)
-{
-    gateway::GatewaySession slots[1];
+    TestGatewaySession slots[1];
     session::SessionServer server;
     session::SessionServerConfig config;
     session::SessionOpenRequest request;
-    session::Session* logic_session;
+    session::Session* service_session;
     net::TcpLink link;
-    MessageCounter counter;
-    const char body[] = "abc";
+    proto::PB_CS_PING ping;
+    proto::PB_SC_PONG response;
+    proto::PB_CS_LOGIN_REQ login_request;
+    std::string body;
+    SendCapture capture;
     abe_msg_header_t header;
-    unsigned char packet[ABE_MSG_HEADER_SIZE + sizeof(body)];
+    unsigned char packet[ABE_MSG_HEADER_SIZE + 512u];
+    abe_msg_packet_view_t sent_packet;
     uint32_t written_size;
     int status;
 
-    memset(&counter, 0, sizeof(counter));
+    memset(&capture, 0, sizeof(capture));
     memset(&config, 0, sizeof(config));
     config.server_id = 1u;
     config.sessions = slots;
@@ -70,35 +84,65 @@ static int test_gateway_session_routes_message(void)
     request.link_user_data = &link;
 
     status = proto::ERROR_CODE_OK;
-    logic_session = server.open_session(request, &status);
+    service_session = server.open_session(request, &status);
     TEST_REQUIRE(status == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(logic_session != NULL);
-    TEST_REQUIRE(logic_session->set_message_handler(12004u, on_message, &counter) ==
-        proto::ERROR_CODE_OK);
+    TEST_REQUIRE(service_session != NULL);
 
-    TEST_REQUIRE(logic_session == &slots[0]);
+    TEST_REQUIRE(service_session == &slots[0]);
     TEST_REQUIRE(slots[0].active() == 1);
     TEST_REQUIRE(slots[0].link() == &link);
     TEST_REQUIRE(slots[0].link_id() == request.link_id);
-    TEST_REQUIRE((session::Session*)&slots[0] == logic_session);
+    TEST_REQUIRE((session::Session*)&slots[0] == service_session);
+    slots[0].bind_capture(&capture);
+
+    ping.mutable_header()->set_protocol_id(proto::CS_PING);
+    ping.set_client_send_time_ms(1234u);
+    TEST_REQUIRE(ping.SerializeToString(&body));
 
     abe_msg_header_init(&header);
-    header.msg_id = 12004u;
+    header.msg_id = proto::CS_PING;
     written_size = 0u;
     TEST_REQUIRE(abe_msg_packet_encode(
         &header,
-        body,
-        3u,
+        body.data(),
+        (uint32_t)body.size(),
         packet,
         (uint32_t)sizeof(packet),
         &written_size) == ABE_PROTOCOL_OK);
 
     TEST_REQUIRE(slots[0].handle_packet(packet, written_size, 200u) ==
         proto::ERROR_CODE_OK);
-    TEST_REQUIRE(counter.count == 1u);
-    TEST_REQUIRE(counter.msg_id == 12004u);
-    TEST_REQUIRE(counter.size == 3u);
-    TEST_REQUIRE(counter.link_id == request.link_id);
+
+    TEST_REQUIRE(capture.count == 1u);
+    TEST_REQUIRE(abe_msg_packet_decode(capture.data, capture.size, &sent_packet) ==
+        ABE_PROTOCOL_OK);
+    TEST_REQUIRE(sent_packet.header.msg_id == proto::SC_PONG);
+    TEST_REQUIRE(response.ParseFromArray(sent_packet.body, (int)sent_packet.body_size));
+    TEST_REQUIRE(response.header().protocol_id() == proto::SC_PONG);
+    TEST_REQUIRE(response.server_send_time_ms() != 0u);
+
+    memset(&capture, 0, sizeof(capture));
+    body.clear();
+    login_request.mutable_header()->set_protocol_id(proto::CS_LOGIN_REQ);
+    login_request.mutable_header()->set_seq(101u);
+    login_request.set_account("alice01");
+    login_request.set_nickname("Alice");
+    TEST_REQUIRE(login_request.SerializeToString(&body));
+
+    abe_msg_header_init(&header);
+    header.msg_id = proto::CS_LOGIN_REQ;
+    written_size = 0u;
+    TEST_REQUIRE(abe_msg_packet_encode(
+        &header,
+        body.data(),
+        (uint32_t)body.size(),
+        packet,
+        (uint32_t)sizeof(packet),
+        &written_size) == ABE_PROTOCOL_OK);
+
+    TEST_REQUIRE(slots[0].handle_packet(packet, written_size, 210u) ==
+        proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
+    TEST_REQUIRE(capture.count == 0u);
 
     TEST_REQUIRE(server.close_session(request.link_id, 0u, 300u) ==
         proto::ERROR_CODE_OK);
@@ -110,7 +154,7 @@ static int test_gateway_session_routes_message(void)
 
 int main()
 {
-    if (test_gateway_session_routes_message() != ABE_TEST_STATUS_OK) {
+    if (test_gateway_session_handles_ping() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     return ABE_TEST_STATUS_OK;

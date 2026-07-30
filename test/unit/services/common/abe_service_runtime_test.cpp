@@ -4,6 +4,7 @@
 
 #include <signal.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 namespace service_common = abe::service::common;
@@ -21,6 +22,7 @@ public:
           message_queue_seen(false),
           config_seen(false),
           mysql_seen(false),
+          redis_seen(false),
           id_seen(false),
           schedule_timer(false),
           wait_for_timer(false),
@@ -33,7 +35,8 @@ public:
           first_update_message_count(0u),
           load_config_status(service_common::SERVICE_STATUS_OK),
           init_status(service_common::SERVICE_STATUS_OK),
-          update_status(service_common::SERVICE_STATUS_OK)
+          update_status(service_common::SERVICE_STATUS_OK),
+          runtime_config_path(NULL)
     {
     }
 
@@ -45,6 +48,11 @@ public:
     virtual void defaults()
     {
         ++defaults_count;
+    }
+
+    virtual const char* config_path() const
+    {
+        return runtime_config_path;
     }
 
     virtual int load_config(const abe_config_t* config)
@@ -63,6 +71,7 @@ public:
         time_wheel_seen = context.time_wheel != NULL;
         message_queue_seen = context.message_queue != NULL;
         mysql_seen = context.mysql != NULL;
+        redis_seen = context.redis != NULL;
         id_seen = context.id_generator != NULL;
         if (init_status != service_common::SERVICE_STATUS_OK) {
             return init_status;
@@ -175,6 +184,7 @@ public:
     bool message_queue_seen;
     bool config_seen;
     bool mysql_seen;
+    bool redis_seen;
     bool id_seen;
     bool schedule_timer;
     bool wait_for_timer;
@@ -188,6 +198,7 @@ public:
     int load_config_status;
     int init_status;
     int update_status;
+    const char* runtime_config_path;
 };
 
 class QueueCounterService : public service_common::Service {
@@ -219,6 +230,35 @@ public:
     uint32_t count;
     uint64_t last_source_id;
 };
+
+static int write_text_file(const char* path, const char* text)
+{
+    FILE* file;
+    size_t size;
+    size_t written;
+
+    if (path == NULL || text == NULL) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+
+    file = fopen(path, "wb");
+    if (file == NULL) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+
+    size = strlen(text);
+    written = fwrite(text, 1u, size, file);
+    if (written != size) {
+        fclose(file);
+        remove(path);
+        return ABE_TEST_STATUS_FAILED;
+    }
+    if (fclose(file) != 0) {
+        remove(path);
+        return ABE_TEST_STATUS_FAILED;
+    }
+    return ABE_TEST_STATUS_OK;
+}
 
 static int test_message_queue_process_limit(void)
 {
@@ -283,7 +323,8 @@ static int test_run_calls_service_directly(void)
     TEST_REQUIRE(service.time_wheel_seen);
     TEST_REQUIRE(service.message_queue_seen);
     TEST_REQUIRE(!service.config_seen);
-    TEST_REQUIRE(!service.mysql_seen);
+    TEST_REQUIRE(service.mysql_seen);
+    TEST_REQUIRE(service.redis_seen);
     TEST_REQUIRE(service.id_seen);
     return ABE_TEST_STATUS_OK;
 }
@@ -314,6 +355,78 @@ static int test_run_processes_message_queue_by_tick(void)
     TEST_REQUIRE(service.message_count == 3u);
     TEST_REQUIRE(service.first_update_message_count == 3u);
     TEST_REQUIRE(service.close_count == 1u);
+    return ABE_TEST_STATUS_OK;
+}
+
+static int test_run_applies_runtime_config_file(void)
+{
+    static const char* config_path = "/tmp/abe_service_runtime_config_test.json";
+    static const char json_text[] =
+        "{"
+        "  \"runtime\": {"
+        "    \"tick_ms\": 1,"
+        "    \"timer_max_count\": 16,"
+        "    \"message_tick_hz\": 1000,"
+        "    \"message_max_per_tick\": 1,"
+        "    \"message_queue_capacity\": 8"
+        "  },"
+        "  \"log\": {"
+        "    \"output\": \"console\","
+        "    \"level\": \"off\""
+        "  },"
+        "  \"id\": {"
+        "    \"node_id\": 0"
+        "  }"
+        "}";
+    TestService service;
+    int rc;
+
+    TEST_REQUIRE(write_text_file(config_path, json_text) == ABE_TEST_STATUS_OK);
+
+    service.runtime_config_path = config_path;
+    service.schedule_messages = true;
+    service.wait_for_messages = true;
+    service.target_message_count = 3u;
+    rc = service_common::run(service);
+    remove(config_path);
+
+    TEST_REQUIRE(rc == service_common::SERVICE_STATUS_OK);
+    TEST_REQUIRE(service.config_seen);
+    TEST_REQUIRE(service.message_count == 3u);
+    TEST_REQUIRE(service.first_update_message_count == 1u);
+    TEST_REQUIRE(service.close_count == 1u);
+    return ABE_TEST_STATUS_OK;
+}
+
+static int test_run_rejects_oversized_runtime_config_string(void)
+{
+    static const char* config_path = "/tmp/abe_service_runtime_config_long_string_test.json";
+    char long_level[64];
+    char json_text[128];
+    TestService service;
+    int written;
+    int rc;
+
+    memset(long_level, 'x', sizeof(long_level) - 1u);
+    long_level[sizeof(long_level) - 1u] = '\0';
+    written = snprintf(
+        json_text,
+        sizeof(json_text),
+        "{\"log\":{\"level\":\"%s\"}}",
+        long_level);
+    if (written < 0 || (size_t)written >= sizeof(json_text)) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+
+    TEST_REQUIRE(write_text_file(config_path, json_text) == ABE_TEST_STATUS_OK);
+
+    service.runtime_config_path = config_path;
+    rc = service_common::run(service);
+    remove(config_path);
+
+    TEST_REQUIRE(rc == service_common::SERVICE_STATUS_INVALID_ARG);
+    TEST_REQUIRE(service.load_config_count == 0u);
+    TEST_REQUIRE(service.init_count == 0u);
     return ABE_TEST_STATUS_OK;
 }
 
@@ -399,6 +512,12 @@ int main()
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_run_processes_message_queue_by_tick() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+    if (test_run_applies_runtime_config_file() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+    if (test_run_rejects_oversized_runtime_config_string() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_run_returns_load_config_error() != ABE_TEST_STATUS_OK) {

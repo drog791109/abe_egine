@@ -38,28 +38,68 @@ static const char* login_error_message(int status)
         return "reconnect failed";
     case proto::ERROR_CODE_SESSION_NO_SLOT:
         return "no session slot";
+    case proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE:
+        return "service unavailable";
     default:
         return "login failed";
     }
+}
+
+static void set_result_status(
+    proto::PB_RESULT* result,
+    int status)
+{
+    if (result == NULL) {
+        return;
+    }
+
+    result->set_error_code((proto::ErrorCode)status);
+    result->set_message(login_error_message(status));
+}
+
+static void fill_response_header(
+    proto::PB_MESSAGE_HEADER* response_header,
+    const proto::PB_MESSAGE_HEADER& request_header,
+    proto::ProtocolId response_id)
+{
+    if (response_header == NULL) {
+        return;
+    }
+
+    response_header->CopyFrom(request_header);
+    response_header->set_protocol_id(response_id);
+    response_header->set_server_time_ms(abe_time_real_ms());
 }
 
 static void set_login_response_status(
     proto::PB_SC_LOGIN_RESP* response,
     int status)
 {
-    proto::PB_RESULT* result;
-
     if (response == NULL) {
         return;
     }
 
-    result = response->mutable_result();
-    result->set_error_code((proto::ErrorCode)status);
-    result->set_message(login_error_message(status));
+    set_result_status(response->mutable_result(), status);
+}
+
+static int validate_handler_context(
+    int initialized,
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    uint64_t now_ms)
+{
+    if (!initialized) {
+        return proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    if (gateway_id == 0u || connection_id == 0u || now_ms == 0u) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+    return proto::ERROR_CODE_OK;
 }
 
 static void fill_account_proto(
-    const LoginAccountInfo& account,
+    const LoginAccountData& account_data,
+    const LoginPlayerData& player_data,
     proto::PB_LOGIN_ACCOUNT_INFO* out_info)
 {
     proto::PB_PLAYER_ID* player;
@@ -70,16 +110,38 @@ static void fill_account_proto(
 
     out_info->Clear();
     player = out_info->mutable_player();
-    player->set_uid(account.uid);
-    player->set_open_id(account.account_name);
-    out_info->set_account_name(account.account_name);
-    out_info->set_nickname(account.nickname);
-    out_info->set_sex(account.sex);
-    out_info->set_avatar_id(account.avatar_id);
-    out_info->set_level(account.level);
-    out_info->set_region(account.region);
-    out_info->set_device_id(account.device_id);
-    out_info->set_client_version(account.client_version);
+    player->set_uid(player_data.uid);
+    player->set_open_id(account_data.account_name);
+    out_info->set_account_name(account_data.account_name);
+    out_info->set_nickname(player_data.nickname);
+    out_info->set_sex(player_data.sex);
+    out_info->set_avatar_id(player_data.avatar_id);
+    out_info->set_level(player_data.level);
+    out_info->set_region(player_data.region);
+    out_info->set_device_id(account_data.device_id);
+    out_info->set_client_version(account_data.client_version);
+}
+
+static void fill_player_data_proto(
+    const LoginAccountData& account_data,
+    const LoginPlayerData& player_data,
+    proto::PB_LOGIN_PLAYER_DATA* out_data)
+{
+    proto::PB_PLAYER_ID* player;
+
+    if (out_data == NULL) {
+        return;
+    }
+
+    out_data->Clear();
+    player = out_data->mutable_player();
+    player->set_uid(player_data.uid);
+    player->set_open_id(account_data.account_name);
+    out_data->set_nickname(player_data.nickname);
+    out_data->set_sex(player_data.sex);
+    out_data->set_avatar_id(player_data.avatar_id);
+    out_data->set_level(player_data.level);
+    out_data->set_region(player_data.region);
 }
 
 void set_login_server_defaults(LoginServerConfig* config)
@@ -88,7 +150,7 @@ void set_login_server_defaults(LoginServerConfig* config)
         return;
     }
 
-    set_login_manager_defaults(&config->accounts);
+    set_login_process_defaults(&config->accounts);
     gatehub::set_gatehub_defaults(&config->sessions);
     config->default_region = "global";
 }
@@ -303,7 +365,8 @@ int LoginServer::handle_login(
     LoginAuthResult auth_result;
     gatehub::GateHubOpenRequest session_request;
     gatehub::GateHubOpenResult session_result;
-    LoginAccountInfo account;
+    LoginAccountData account_data;
+    LoginPlayerData player_data;
     int rc;
 
     if (out_response == NULL) {
@@ -311,8 +374,10 @@ int LoginServer::handle_login(
     }
 
     out_response->Clear();
-    out_response->mutable_header()->CopyFrom(request.header());
-    out_response->mutable_header()->set_server_time_ms(abe_time_real_ms());
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_LOGIN_RESP);
     if (!initialized_ ||
         gateway_id == 0u ||
         connection_id == 0u ||
@@ -345,8 +410,8 @@ int LoginServer::handle_login(
     }
 
     memset(&session_request, 0, sizeof(session_request));
-    session_request.account_id = auth_result.account.account_id;
-    session_request.uid = auth_result.account.uid;
+    session_request.account_id = auth_result.account_data.account_id;
+    session_request.uid = auth_result.player_data.uid;
     session_request.gateway_id = gateway_id;
     session_request.connection_id = connection_id;
     session_request.session_token = request.session_token().c_str();
@@ -356,7 +421,7 @@ int LoginServer::handle_login(
     if (rc != proto::ERROR_CODE_OK) {
         ABE_LOG_WARN(
             "login session rejected uid=%llu gateway_id=%llu connection_id=%llu status=%d",
-            (unsigned long long)auth_result.account.uid,
+            (unsigned long long)auth_result.player_data.uid,
             (unsigned long long)gateway_id,
             (unsigned long long)connection_id,
             rc);
@@ -365,33 +430,122 @@ int LoginServer::handle_login(
     }
 
     rc = accounts_.mark_login_success(
-        auth_result.account.uid,
+        auth_result.player_data.uid,
         auth_request,
-        &account);
+        &account_data,
+        &player_data);
     if (rc != proto::ERROR_CODE_OK) {
         (void)sessions_.close_session(
-            auth_result.account.uid,
+            auth_result.player_data.uid,
             session_result.session.session_token);
         set_login_response_status(out_response, rc);
         return rc;
     }
 
     set_login_response_status(out_response, proto::ERROR_CODE_OK);
-    out_response->mutable_player()->set_uid(account.uid);
-    out_response->mutable_player()->set_open_id(account.account_name);
+    out_response->mutable_player()->set_uid(player_data.uid);
+    out_response->mutable_player()->set_open_id(account_data.account_name);
     out_response->set_session_token(session_result.session.session_token);
     out_response->set_session_expire_time_ms(session_result.session.expire_time_ms);
-    fill_account_proto(account, out_response->mutable_account_info());
+    fill_account_proto(
+        account_data,
+        player_data,
+        out_response->mutable_account_info());
+    fill_player_data_proto(
+        account_data,
+        player_data,
+        out_response->mutable_player_data());
 
     ABE_LOG_INFO(
         "login accepted uid=%llu gateway_id=%llu connection_id=%llu created=%u reconnect=%u replaced=%u",
-        (unsigned long long)account.uid,
+        (unsigned long long)player_data.uid,
         (unsigned long long)gateway_id,
         (unsigned long long)connection_id,
         auth_result.created,
         session_result.reconnected,
         session_result.replaced);
     return proto::ERROR_CODE_OK;
+}
+
+int LoginServer::handle_create_charactor(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_CREATE_CHARACTOR& request,
+    proto::PB_SC_CREATE_CHARACTOR* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_CREATE_CHARACTOR);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int LoginServer::handle_select_charactor(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_SELECT_CHARACTOR& request,
+    proto::PB_SC_SELECT_CHARACTOR* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_SELECT_CHARACTOR);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int LoginServer::handle_delete_charactor(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_DELETE_CHARACTOR& request,
+    proto::PB_SC_DELETE_CHARACTOR* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_DELETE_CHARACTOR);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
 }
 
 int LoginServer::handle_disconnect(
@@ -405,12 +559,12 @@ int LoginServer::handle_disconnect(
     return sessions_.disconnect(gateway_id, connection_id, now_ms);
 }
 
-LoginManager* LoginServer::account_manager()
+LoginProcess* LoginServer::account_process()
 {
     return &accounts_;
 }
 
-const LoginManager* LoginServer::account_manager() const
+const LoginProcess* LoginServer::account_process() const
 {
     return &accounts_;
 }

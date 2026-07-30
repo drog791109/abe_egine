@@ -13,7 +13,7 @@ set_target_properties(abe_gateway_server
 target_link_libraries(abe_gateway_server
     PUBLIC
         abe_adapter_net
-        abe_logic_session
+        abe_service_session
         abe_common_protocol
         abe_base_time
         abe_service_common

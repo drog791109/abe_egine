@@ -2,7 +2,7 @@
 #define ABE_SERVICE_LOGIN_SERVER_H
 
 #include "abe_gatehub_server.h"
-#include "abe_login_manager.h"
+#include "abe_login_process.h"
 #include "abe_service_runtime.h"
 #include "protocol.pb.h"
 
@@ -13,7 +13,7 @@ namespace service {
 namespace login {
 
 struct LoginServerConfig {
-    LoginManagerConfig accounts;
+    LoginProcessConfig accounts;
     abe::service::gatehub::GateHubConfig sessions;
     const char* default_region;
 };
@@ -38,13 +38,31 @@ public:
         const abe::proto::client::PB_CS_LOGIN_REQ& request,
         abe::proto::client::PB_SC_LOGIN_RESP* out_response,
         uint64_t now_ms);
+    int handle_create_charactor(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_CREATE_CHARACTOR& request,
+        abe::proto::client::PB_SC_CREATE_CHARACTOR* out_response,
+        uint64_t now_ms);
+    int handle_select_charactor(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_SELECT_CHARACTOR& request,
+        abe::proto::client::PB_SC_SELECT_CHARACTOR* out_response,
+        uint64_t now_ms);
+    int handle_delete_charactor(
+        uint64_t gateway_id,
+        uint64_t connection_id,
+        const abe::proto::client::PB_CS_DELETE_CHARACTOR& request,
+        abe::proto::client::PB_SC_DELETE_CHARACTOR* out_response,
+        uint64_t now_ms);
     int handle_disconnect(
         uint64_t gateway_id,
         uint64_t connection_id,
         uint64_t now_ms);
 
-    LoginManager* account_manager();
-    const LoginManager* account_manager() const;
+    LoginProcess* account_process();
+    const LoginProcess* account_process() const;
     abe::service::gatehub::GateHubRegistry* session_registry();
     const abe::service::gatehub::GateHubRegistry* session_registry() const;
     int initialized() const;
@@ -54,7 +72,7 @@ private:
     LoginServer& operator=(const LoginServer&);
 
     LoginServerConfig config_;
-    LoginManager accounts_;
+    LoginProcess accounts_;
     abe::service::gatehub::GateHubRegistry sessions_;
     int initialized_;
 };

@@ -314,6 +314,11 @@ static void abe_net_tcp_read_cb(struct bufferevent* bev, void* ctx)
         }
 
         payload_size = abe_net_u32_from_be(header);
+        if (payload_size == 0u) {
+            abe_net_tcp_emit_event(conn, ABE_NET_TCP_EVENT_ERROR, ABE_NET_INVALID_LENGTH);
+            abe_net_tcp_begin_close(conn, 1);
+            break;
+        }
         if (payload_size > conn->max_packet_size) {
             abe_net_tcp_emit_event(conn, ABE_NET_TCP_EVENT_ERROR, ABE_NET_PACKET_TOO_LARGE);
             abe_net_tcp_begin_close(conn, 1);
@@ -325,20 +330,17 @@ static void abe_net_tcp_read_cb(struct bufferevent* bev, void* ctx)
         }
 
         evbuffer_drain(input, ABE_NET_PACKET_HEADER_SIZE);
-        payload = NULL;
-        if (payload_size > 0) {
-            payload = (unsigned char*)abe_net_alloc(conn->loop, payload_size);
-            if (payload == NULL) {
-                abe_net_tcp_emit_event(conn, ABE_NET_TCP_EVENT_ERROR, ABE_NET_NO_MEMORY);
-                abe_net_tcp_begin_close(conn, 1);
-                break;
-            }
-            if (evbuffer_remove(input, payload, payload_size) != (int)payload_size) {
-                abe_net_release(conn->loop, payload);
-                abe_net_tcp_emit_event(conn, ABE_NET_TCP_EVENT_ERROR, ABE_NET_ERROR);
-                abe_net_tcp_begin_close(conn, 1);
-                break;
-            }
+        payload = (unsigned char*)abe_net_alloc(conn->loop, payload_size);
+        if (payload == NULL) {
+            abe_net_tcp_emit_event(conn, ABE_NET_TCP_EVENT_ERROR, ABE_NET_NO_MEMORY);
+            abe_net_tcp_begin_close(conn, 1);
+            break;
+        }
+        if (evbuffer_remove(input, payload, payload_size) != (int)payload_size) {
+            abe_net_release(conn->loop, payload);
+            abe_net_tcp_emit_event(conn, ABE_NET_TCP_EVENT_ERROR, ABE_NET_ERROR);
+            abe_net_tcp_begin_close(conn, 1);
+            break;
         }
 
         abe_net_tcp_emit_message(conn, payload, payload_size);
@@ -506,7 +508,13 @@ int abe_net_packet_encode(
 {
     unsigned char* out;
 
-    if ((payload_size > 0 && payload == NULL) || out_buffer == NULL) {
+    if (out_buffer == NULL) {
+        return ABE_NET_INVALID_ARG;
+    }
+    if (payload_size == 0u) {
+        return ABE_NET_INVALID_LENGTH;
+    }
+    if (payload == NULL) {
         return ABE_NET_INVALID_ARG;
     }
     if (payload_size > ABE_NET_DEFAULT_MAX_PACKET_SIZE) {
@@ -518,9 +526,7 @@ int abe_net_packet_encode(
 
     out = (unsigned char*)out_buffer;
     abe_net_u32_to_be(payload_size, out);
-    if (payload_size > 0) {
-        memcpy(out + ABE_NET_PACKET_HEADER_SIZE, payload, payload_size);
-    }
+    memcpy(out + ABE_NET_PACKET_HEADER_SIZE, payload, payload_size);
     if (out_packet_size != NULL) {
         *out_packet_size = payload_size + ABE_NET_PACKET_HEADER_SIZE;
     }
@@ -543,6 +549,9 @@ int abe_net_packet_peek_size(
     }
 
     payload_size = abe_net_u32_from_be((const unsigned char*)buffer);
+    if (payload_size == 0u) {
+        return ABE_NET_INVALID_LENGTH;
+    }
     if (payload_size > ABE_NET_DEFAULT_MAX_PACKET_SIZE) {
         return ABE_NET_PACKET_TOO_LARGE;
     }
@@ -750,6 +759,9 @@ int abe_net_tcp_send(abe_net_tcp_conn_t* conn, const void* data, uint32_t size)
 
     if (conn == NULL || conn->bev == NULL || (size > 0 && data == NULL)) {
         return ABE_NET_INVALID_ARG;
+    }
+    if (size == 0u) {
+        return ABE_NET_INVALID_LENGTH;
     }
     if (size > conn->max_packet_size) {
         return ABE_NET_PACKET_TOO_LARGE;

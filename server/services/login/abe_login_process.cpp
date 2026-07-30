@@ -1,4 +1,4 @@
-#include "abe_login_manager.h"
+#include "abe_login_process.h"
 
 #include "abe_log.h"
 #include "protocol.pb.h"
@@ -20,9 +20,10 @@ enum {
     ABE_LOGIN_NICKNAME_MAX_CODEPOINTS = 16u
 };
 
-struct LoginManager::AccountSlot {
+struct LoginProcess::AccountSlot {
     int used;
-    LoginAccountInfo info;
+    LoginAccountData account_data;
+    LoginPlayerData player_data;
 };
 
 static unsigned char ascii_lower(unsigned char value)
@@ -427,7 +428,7 @@ static int copy_text(char* target, uint32_t capacity, const char* source)
     return ABE_OK;
 }
 
-void set_login_manager_defaults(LoginManagerConfig* config)
+void set_login_process_defaults(LoginProcessConfig* config)
 {
     if (config == NULL) {
         return;
@@ -507,22 +508,22 @@ int login_validate_nickname(
     return proto::ERROR_CODE_OK;
 }
 
-LoginManager::LoginManager()
+LoginProcess::LoginProcess()
     : id_generator_(NULL),
       accounts_(NULL),
       account_count_(0u),
       initialized_(0)
 {
-    set_login_manager_defaults(&config_);
+    set_login_process_defaults(&config_);
 }
 
-LoginManager::~LoginManager()
+LoginProcess::~LoginProcess()
 {
     close();
 }
 
-int LoginManager::init(
-    const LoginManagerConfig& config,
+int LoginProcess::init(
+    const LoginProcessConfig& config,
     abe_snowflake_t* id_generator)
 {
     if (config.max_accounts == 0u ||
@@ -547,7 +548,7 @@ int LoginManager::init(
     return proto::ERROR_CODE_OK;
 }
 
-void LoginManager::close()
+void LoginProcess::close()
 {
     delete[] accounts_;
     accounts_ = NULL;
@@ -556,7 +557,7 @@ void LoginManager::close()
     initialized_ = 0;
 }
 
-int LoginManager::authenticate(
+int LoginProcess::authenticate(
     const LoginAuthRequest& request,
     LoginAuthResult* out_result)
 {
@@ -612,7 +613,10 @@ int LoginManager::authenticate(
         if (!config_.allow_register) {
             return proto::ERROR_CODE_AUTH_FAILED;
         }
-        rc = create_account(request, &out_result->account);
+        rc = create_account(
+            request,
+            &out_result->account_data,
+            &out_result->player_data);
         if (rc == proto::ERROR_CODE_OK) {
             out_result->created = 1u;
         }
@@ -621,17 +625,19 @@ int LoginManager::authenticate(
 
     if (request.nickname != NULL &&
         request.nickname[0] != '\0' &&
-        strcmp(request.nickname, slot->info.nickname) != 0) {
+        strcmp(request.nickname, slot->player_data.nickname) != 0) {
         return proto::ERROR_CODE_AUTH_INVALID_NICKNAME;
     }
 
-    out_result->account = slot->info;
+    out_result->account_data = slot->account_data;
+    out_result->player_data = slot->player_data;
     return proto::ERROR_CODE_OK;
 }
 
-int LoginManager::create_account(
+int LoginProcess::create_account(
     const LoginAuthRequest& request,
-    LoginAccountInfo* out_account)
+    LoginAccountData* out_account_data,
+    LoginPlayerData* out_player_data)
 {
     AccountSlot* slot;
     uint64_t account_id;
@@ -641,7 +647,7 @@ int LoginManager::create_account(
     if (!initialized_) {
         return proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
     }
-    if (out_account == NULL || request.now_ms == 0u) {
+    if (out_account_data == NULL || out_player_data == NULL || request.now_ms == 0u) {
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
@@ -686,39 +692,43 @@ int LoginManager::create_account(
 
     memset(slot, 0, sizeof(*slot));
     slot->used = 1;
-    slot->info.account_id = account_id;
-    slot->info.uid = uid;
-    slot->info.created_at_ms = request.now_ms;
-    slot->info.last_login_time_ms = 0u;
-    slot->info.sex = 0u;
-    slot->info.avatar_id = 0u;
-    slot->info.level = 1u;
+    slot->account_data.account_id = account_id;
+    slot->account_data.uid = uid;
+    slot->account_data.created_at_ms = request.now_ms;
+    slot->account_data.last_login_time_ms = 0u;
+    slot->player_data.uid = uid;
+    slot->player_data.account_id = account_id;
+    slot->player_data.created_at_ms = request.now_ms;
+    slot->player_data.last_login_time_ms = 0u;
+    slot->player_data.sex = 0u;
+    slot->player_data.avatar_id = 0u;
+    slot->player_data.level = 1u;
 
     rc = copy_text(
-        slot->info.account_name,
+        slot->account_data.account_name,
         ABE_LOGIN_ACCOUNT_CAPACITY,
         request.account);
     if (rc == ABE_OK) {
         rc = copy_text(
-            slot->info.nickname,
+            slot->player_data.nickname,
             ABE_LOGIN_NICKNAME_CAPACITY,
             request.nickname);
     }
     if (rc == ABE_OK) {
         rc = copy_text(
-            slot->info.device_id,
+            slot->account_data.device_id,
             ABE_LOGIN_DEVICE_ID_CAPACITY,
             request.device_id);
     }
     if (rc == ABE_OK) {
         rc = copy_text(
-            slot->info.client_version,
+            slot->account_data.client_version,
             ABE_LOGIN_CLIENT_VERSION_CAPACITY,
             request.client_version);
     }
     if (rc == ABE_OK) {
         rc = copy_text(
-            slot->info.region,
+            slot->player_data.region,
             ABE_LOGIN_REGION_CAPACITY,
             request.region);
     }
@@ -728,14 +738,16 @@ int LoginManager::create_account(
     }
 
     ++account_count_;
-    *out_account = slot->info;
+    *out_account_data = slot->account_data;
+    *out_player_data = slot->player_data;
     return proto::ERROR_CODE_OK;
 }
 
-int LoginManager::mark_login_success(
+int LoginProcess::mark_login_success(
     uint64_t uid,
     const LoginAuthRequest& request,
-    LoginAccountInfo* out_account)
+    LoginAccountData* out_account_data,
+    LoginPlayerData* out_player_data)
 {
     AccountSlot* slot;
     int rc;
@@ -753,18 +765,18 @@ int LoginManager::mark_login_success(
     }
 
     rc = copy_text(
-        slot->info.device_id,
+        slot->account_data.device_id,
         ABE_LOGIN_DEVICE_ID_CAPACITY,
         request.device_id);
     if (rc == ABE_OK) {
         rc = copy_text(
-            slot->info.client_version,
+            slot->account_data.client_version,
             ABE_LOGIN_CLIENT_VERSION_CAPACITY,
             request.client_version);
     }
     if (rc == ABE_OK && request.region != NULL && request.region[0] != '\0') {
         rc = copy_text(
-            slot->info.region,
+            slot->player_data.region,
             ABE_LOGIN_REGION_CAPACITY,
             request.region);
     }
@@ -772,23 +784,27 @@ int LoginManager::mark_login_success(
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
-    slot->info.last_login_time_ms = request.now_ms;
-    if (out_account != NULL) {
-        *out_account = slot->info;
+    slot->account_data.last_login_time_ms = request.now_ms;
+    slot->player_data.last_login_time_ms = request.now_ms;
+    if (out_account_data != NULL) {
+        *out_account_data = slot->account_data;
+    }
+    if (out_player_data != NULL) {
+        *out_player_data = slot->player_data;
     }
     return proto::ERROR_CODE_OK;
 }
 
-int LoginManager::find_account_by_name(
+int LoginProcess::find_account_by_name(
     const char* account_name,
-    LoginAccountInfo* out_account) const
+    LoginAccountData* out_account_data) const
 {
     const AccountSlot* slot;
 
     if (!initialized_) {
         return proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
     }
-    if (account_name == NULL || out_account == NULL) {
+    if (account_name == NULL || out_account_data == NULL) {
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
@@ -796,20 +812,20 @@ int LoginManager::find_account_by_name(
     if (slot == NULL) {
         return proto::ERROR_CODE_AUTH_FAILED;
     }
-    *out_account = slot->info;
+    *out_account_data = slot->account_data;
     return proto::ERROR_CODE_OK;
 }
 
-int LoginManager::find_account_by_uid(
+int LoginProcess::find_account_by_uid(
     uint64_t uid,
-    LoginAccountInfo* out_account) const
+    LoginAccountData* out_account_data) const
 {
     const AccountSlot* slot;
 
     if (!initialized_) {
         return proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
     }
-    if (uid == 0u || out_account == NULL) {
+    if (uid == 0u || out_account_data == NULL) {
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
@@ -817,21 +833,42 @@ int LoginManager::find_account_by_uid(
     if (slot == NULL) {
         return proto::ERROR_CODE_AUTH_FAILED;
     }
-    *out_account = slot->info;
+    *out_account_data = slot->account_data;
     return proto::ERROR_CODE_OK;
 }
 
-uint32_t LoginManager::account_count() const
+int LoginProcess::find_player_by_uid(
+    uint64_t uid,
+    LoginPlayerData* out_player_data) const
+{
+    const AccountSlot* slot;
+
+    if (!initialized_) {
+        return proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    if (uid == 0u || out_player_data == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    slot = find_slot_by_uid(uid);
+    if (slot == NULL) {
+        return proto::ERROR_CODE_AUTH_FAILED;
+    }
+    *out_player_data = slot->player_data;
+    return proto::ERROR_CODE_OK;
+}
+
+uint32_t LoginProcess::account_count() const
 {
     return account_count_;
 }
 
-int LoginManager::initialized() const
+int LoginProcess::initialized() const
 {
     return initialized_;
 }
 
-LoginManager::AccountSlot* LoginManager::find_slot_by_name(
+LoginProcess::AccountSlot* LoginProcess::find_slot_by_name(
     const char* account_name)
 {
     uint32_t index;
@@ -843,7 +880,7 @@ LoginManager::AccountSlot* LoginManager::find_slot_by_name(
     index = 0u;
     while (index < config_.max_accounts) {
         if (accounts_[index].used &&
-            strcmp(accounts_[index].info.account_name, account_name) == 0) {
+            strcmp(accounts_[index].account_data.account_name, account_name) == 0) {
             return &accounts_[index];
         }
         ++index;
@@ -851,7 +888,7 @@ LoginManager::AccountSlot* LoginManager::find_slot_by_name(
     return NULL;
 }
 
-const LoginManager::AccountSlot* LoginManager::find_slot_by_name(
+const LoginProcess::AccountSlot* LoginProcess::find_slot_by_name(
     const char* account_name) const
 {
     uint32_t index;
@@ -863,7 +900,7 @@ const LoginManager::AccountSlot* LoginManager::find_slot_by_name(
     index = 0u;
     while (index < config_.max_accounts) {
         if (accounts_[index].used &&
-            strcmp(accounts_[index].info.account_name, account_name) == 0) {
+            strcmp(accounts_[index].account_data.account_name, account_name) == 0) {
             return &accounts_[index];
         }
         ++index;
@@ -871,7 +908,7 @@ const LoginManager::AccountSlot* LoginManager::find_slot_by_name(
     return NULL;
 }
 
-LoginManager::AccountSlot* LoginManager::find_slot_by_uid(uint64_t uid)
+LoginProcess::AccountSlot* LoginProcess::find_slot_by_uid(uint64_t uid)
 {
     uint32_t index;
 
@@ -881,7 +918,7 @@ LoginManager::AccountSlot* LoginManager::find_slot_by_uid(uint64_t uid)
 
     index = 0u;
     while (index < config_.max_accounts) {
-        if (accounts_[index].used && accounts_[index].info.uid == uid) {
+        if (accounts_[index].used && accounts_[index].player_data.uid == uid) {
             return &accounts_[index];
         }
         ++index;
@@ -889,7 +926,7 @@ LoginManager::AccountSlot* LoginManager::find_slot_by_uid(uint64_t uid)
     return NULL;
 }
 
-const LoginManager::AccountSlot* LoginManager::find_slot_by_uid(
+const LoginProcess::AccountSlot* LoginProcess::find_slot_by_uid(
     uint64_t uid) const
 {
     uint32_t index;
@@ -900,7 +937,7 @@ const LoginManager::AccountSlot* LoginManager::find_slot_by_uid(
 
     index = 0u;
     while (index < config_.max_accounts) {
-        if (accounts_[index].used && accounts_[index].info.uid == uid) {
+        if (accounts_[index].used && accounts_[index].player_data.uid == uid) {
             return &accounts_[index];
         }
         ++index;
@@ -908,7 +945,7 @@ const LoginManager::AccountSlot* LoginManager::find_slot_by_uid(
     return NULL;
 }
 
-LoginManager::AccountSlot* LoginManager::find_slot_by_nickname(
+LoginProcess::AccountSlot* LoginProcess::find_slot_by_nickname(
     const char* nickname)
 {
     uint32_t index;
@@ -920,7 +957,7 @@ LoginManager::AccountSlot* LoginManager::find_slot_by_nickname(
     index = 0u;
     while (index < config_.max_accounts) {
         if (accounts_[index].used &&
-            strcmp(accounts_[index].info.nickname, nickname) == 0) {
+            strcmp(accounts_[index].player_data.nickname, nickname) == 0) {
             return &accounts_[index];
         }
         ++index;
@@ -928,7 +965,7 @@ LoginManager::AccountSlot* LoginManager::find_slot_by_nickname(
     return NULL;
 }
 
-LoginManager::AccountSlot* LoginManager::find_free_slot()
+LoginProcess::AccountSlot* LoginProcess::find_free_slot()
 {
     uint32_t index;
 

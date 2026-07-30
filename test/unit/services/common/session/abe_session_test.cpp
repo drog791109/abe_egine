@@ -6,7 +6,7 @@
 
 #include <string.h>
 
-namespace session = abe::logic::session;
+namespace session = abe::service::session;
 namespace proto = abe::proto::client;
 
 struct MessageCounter {
@@ -56,6 +56,14 @@ protected:
     {
         ++reset_count;
         last_link_user_data = NULL;
+    }
+};
+
+class TestHandlerSession : public session::Session {
+public:
+    void bind(session::SessionHandlerTable* table)
+    {
+        set_handler_table(table);
     }
 };
 
@@ -200,15 +208,23 @@ static int test_server_owns_link_sessions(void)
 
 static int test_session_message_handlers(void)
 {
-    session::Session slots[1];
+    TestHandlerSession slots[1];
     session::SessionServer server;
     session::SessionServerConfig config;
     session::Session* current;
+    TestHandlerSession* handler_session;
+    session::SessionHandlerTable handlers;
+    session::SessionHandlerEntry handler_slots[session::SESSION_MAX_MESSAGE_ID + 1u];
     MessageCounter move_counter;
     MessageCounter default_counter;
     SendCounter send_counter;
     const char payload[] = "abc";
     int status;
+
+    session::Session::init_handler_table(
+        &handlers,
+        handler_slots,
+        session::SESSION_MAX_MESSAGE_ID + 1u);
 
     memset(&move_counter, 0, sizeof(move_counter));
     memset(&default_counter, 0, sizeof(default_counter));
@@ -218,16 +234,22 @@ static int test_session_message_handlers(void)
     config.server_id = 10u;
     config.sessions = slots;
     config.session_count = 1u;
+    config.session_size = (uint32_t)sizeof(slots[0]);
     config.idle_timeout_ms = 0u;
 
     TEST_REQUIRE(server.init(config) == proto::ERROR_CODE_OK);
     current = server.open_session(make_open_request(2001u, 1u, 1000u), &status);
     TEST_REQUIRE(status == proto::ERROR_CODE_OK);
     TEST_REQUIRE(current != NULL);
+    handler_session = (TestHandlerSession*)current;
+    handler_session->bind(&handlers);
 
-    TEST_REQUIRE(current->set_message_handler(3001u, count_message, &move_counter) ==
+    TEST_REQUIRE(session::Session::set_message_handler(&handlers, 3001u, count_message, &move_counter) ==
         proto::ERROR_CODE_OK);
-    TEST_REQUIRE(current->set_default_message_handler(count_message, &default_counter) ==
+    TEST_REQUIRE(session::Session::set_default_message_handler(
+        &handlers,
+        count_message,
+        &default_counter) ==
         proto::ERROR_CODE_OK);
 
     TEST_REQUIRE(server.handle_message(2001u, 3001u, payload, 3u, 1100u) ==
@@ -244,12 +266,13 @@ static int test_session_message_handlers(void)
     TEST_REQUIRE(default_counter.last_message_id == 3999u);
     TEST_REQUIRE(current->last_recv_ms() == 1200u);
 
-    TEST_REQUIRE(current->clear_message_handler(3001u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(session::Session::clear_message_handler(&handlers, 3001u) ==
+        proto::ERROR_CODE_OK);
     TEST_REQUIRE(server.handle_message(2001u, 3001u, NULL, 0u, 1300u) ==
         proto::ERROR_CODE_OK);
     TEST_REQUIRE(default_counter.count == 2u);
 
-    current->clear_default_message_handler();
+    session::Session::clear_default_message_handler(&handlers);
     TEST_REQUIRE(server.handle_message(2001u, 3999u, NULL, 0u, 1400u) ==
         proto::ERROR_CODE_SESSION_NO_HANDLER);
 
@@ -259,6 +282,65 @@ static int test_session_message_handlers(void)
     TEST_REQUIRE(send_counter.last_size == 3u);
     TEST_REQUIRE(send_counter.last_link_id == 2001u);
     TEST_REQUIRE(current->last_send_ms() == 1500u);
+    return ABE_TEST_STATUS_OK;
+}
+
+static int test_session_handlers_are_bound_by_session_type(void)
+{
+    TestHandlerSession first;
+    TestHandlerSession second;
+    session::SessionOpenRequest first_request;
+    session::SessionOpenRequest second_request;
+    session::SessionHandlerTable handlers;
+    session::SessionHandlerEntry handler_slots[session::SESSION_MAX_MESSAGE_ID + 1u];
+    MessageCounter first_counter;
+    MessageCounter shared_counter;
+
+    memset(&first_counter, 0, sizeof(first_counter));
+    memset(&shared_counter, 0, sizeof(shared_counter));
+    session::Session::init_handler_table(
+        &handlers,
+        handler_slots,
+        session::SESSION_MAX_MESSAGE_ID + 1u);
+
+    first_request = make_open_request(4001u, 1u, 1000u);
+    second_request = make_open_request(4002u, 2u, 1000u);
+    TEST_REQUIRE(first.open(12u, first_request) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(second.open(12u, second_request) == proto::ERROR_CODE_OK);
+    first.bind(&handlers);
+    second.bind(&handlers);
+
+    TEST_REQUIRE(session::Session::set_message_handler(&handlers, 3001u, count_message, &first_counter) ==
+        proto::ERROR_CODE_OK);
+    TEST_REQUIRE(session::Session::set_message_handler(
+        &handlers,
+        session::SESSION_MAX_MESSAGE_ID + 1u,
+        count_message,
+        &first_counter) == proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
+    TEST_REQUIRE(first.handle_message(3001u, NULL, 0u, 1100u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(second.handle_message(3001u, NULL, 0u, 1200u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(first_counter.count == 2u);
+    TEST_REQUIRE(first_counter.last_link_id == 4002u);
+
+    TEST_REQUIRE(session::Session::set_message_handler(&handlers, 3001u, count_message, &shared_counter) ==
+        proto::ERROR_CODE_OK);
+    TEST_REQUIRE(first.handle_message(3001u, NULL, 0u, 1300u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(first_counter.count == 2u);
+    TEST_REQUIRE(shared_counter.count == 1u);
+    TEST_REQUIRE(shared_counter.last_link_id == 4001u);
+
+    TEST_REQUIRE(session::Session::clear_message_handler(&handlers, 3001u) ==
+        proto::ERROR_CODE_OK);
+    TEST_REQUIRE(second.handle_message(3001u, NULL, 0u, 1400u) ==
+        proto::ERROR_CODE_SESSION_NO_HANDLER);
+    TEST_REQUIRE(second.handle_message(
+        session::SESSION_MAX_MESSAGE_ID + 1u,
+        NULL,
+        0u,
+        1450u) == proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
+
+    first.close(0u, 1500u);
+    second.close(0u, 1500u);
     return ABE_TEST_STATUS_OK;
 }
 
@@ -324,6 +406,9 @@ int main()
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_session_message_handlers() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+    if (test_session_handlers_are_bound_by_session_type() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_session_state_and_idle_update() != ABE_TEST_STATUS_OK) {

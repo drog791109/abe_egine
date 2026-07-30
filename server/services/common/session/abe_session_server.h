@@ -1,12 +1,12 @@
-#ifndef ABE_LOGIC_SESSION_SERVER_H
-#define ABE_LOGIC_SESSION_SERVER_H
+#ifndef ABE_SERVICE_SESSION_SERVER_H
+#define ABE_SERVICE_SESSION_SERVER_H
 
 #include "abe_session.h"
 
 #include <stdint.h>
 
 namespace abe {
-namespace logic {
+namespace service {
 namespace session {
 
 struct SessionServerConfig {
@@ -66,7 +66,7 @@ private:
 };
 
 } /* namespace session */
-} /* namespace logic */
+} /* namespace service */
 } /* namespace abe */
 
-#endif /* ABE_LOGIC_SESSION_SERVER_H */
+#endif /* ABE_SERVICE_SESSION_SERVER_H */

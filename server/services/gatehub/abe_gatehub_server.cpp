@@ -1,6 +1,7 @@
 #include "abe_gatehub_server.h"
 
 #include "abe_log.h"
+#include "abe_time.h"
 #include "protocol.pb.h"
 
 #include <errno.h>
@@ -33,6 +34,80 @@ static uint64_t add_deadline(uint64_t now_ms, uint64_t duration_ms)
         return 0xffffffffffffffffull;
     }
     return now_ms + duration_ms;
+}
+
+static const char* gatehub_error_message(int status)
+{
+    switch (status) {
+    case proto::ERROR_CODE_OK:
+        return "ok";
+    case proto::ERROR_CODE_COMMON_INVALID_ARGUMENT:
+        return "invalid argument";
+    case proto::ERROR_CODE_SESSION_NOT_FOUND:
+        return "session not found";
+    case proto::ERROR_CODE_SESSION_CLOSED:
+        return "session closed";
+    case proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE:
+        return "service unavailable";
+    default:
+        return "gatehub request failed";
+    }
+}
+
+static void fill_response_header(
+    proto::PB_MESSAGE_HEADER* response_header,
+    const proto::PB_MESSAGE_HEADER& request_header,
+    proto::ProtocolId response_id)
+{
+    if (response_header == NULL) {
+        return;
+    }
+
+    response_header->CopyFrom(request_header);
+    response_header->set_protocol_id(response_id);
+    response_header->set_server_time_ms(abe_time_real_ms());
+}
+
+static void set_result_status(proto::PB_RESULT* result, int status)
+{
+    if (result == NULL) {
+        return;
+    }
+
+    result->set_error_code((proto::ErrorCode)status);
+    result->set_message(gatehub_error_message(status));
+}
+
+static void fill_error_notify(
+    proto::PB_SC_ERROR_NOTIFY* response,
+    const proto::PB_MESSAGE_HEADER& request_header,
+    int status)
+{
+    if (response == NULL) {
+        return;
+    }
+
+    response->Clear();
+    fill_response_header(
+        response->mutable_header(),
+        request_header,
+        proto::SC_ERROR_NOTIFY);
+    set_result_status(response->mutable_result(), status);
+}
+
+static int validate_handler_context(
+    int initialized,
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    uint64_t now_ms)
+{
+    if (!initialized) {
+        return proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    if (gateway_id == 0u || connection_id == 0u || now_ms == 0u) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+    return proto::ERROR_CODE_OK;
 }
 
 static bool token_equal(const char* left, const char* right)
@@ -664,6 +739,300 @@ void GateHubServer::close(uint64_t now_ms)
     (void)now_ms;
     registry_.close();
     initialized_ = 0;
+}
+
+int GateHubServer::handle_enter_lobby(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_ENTER_LOBBY_REQ& request,
+    proto::PB_SC_ENTER_LOBBY_RESP* out_response,
+    uint64_t now_ms)
+{
+    GateHubSessionInfo session;
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_ENTER_LOBBY_RESP);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK && request.uid() == 0u) {
+        rc = proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = registry_.find_session(request.uid(), &session);
+    }
+    if (rc == proto::ERROR_CODE_OK &&
+        (session.gateway_id != gateway_id ||
+         session.connection_id != connection_id ||
+         session.state != GATEHUB_SESSION_ONLINE)) {
+        rc = proto::ERROR_CODE_SESSION_CLOSED;
+    }
+
+    set_result_status(out_response->mutable_result(), rc);
+    if (rc == proto::ERROR_CODE_OK) {
+        out_response->mutable_player()->set_uid(request.uid());
+        out_response->set_lobby_time_ms(now_ms);
+    }
+    return rc;
+}
+
+int GateHubServer::handle_room_list(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_ROOM_LIST_REQ& request,
+    proto::PB_SC_ROOM_LIST_RESP* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_ROOM_LIST_RESP);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_create_room(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_CREATE_ROOM_REQ& request,
+    proto::PB_SC_CREATE_ROOM_RESP* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_CREATE_ROOM_RESP);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_join_room(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_JOIN_ROOM_REQ& request,
+    proto::PB_SC_JOIN_ROOM_RESP* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_JOIN_ROOM_RESP);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_update_room_state(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_UPDATE_ROOM_STATE_REQ& request,
+    proto::PB_SC_UPDATE_ROOM_STATE_RESP* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_UPDATE_ROOM_STATE_RESP);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_fetch_room_archive(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_FETCH_ROOM_ARCHIVE_REQ& request,
+    proto::PB_SC_FETCH_ROOM_ARCHIVE_RESP* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_FETCH_ROOM_ARCHIVE_RESP);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_lobby_chat(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_LOBBY_CHAT_REQ& request,
+    proto::PB_SC_ERROR_NOTIFY* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    fill_error_notify(out_response, request.header(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_enter_game(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_ENTER_GAME_REQ& request,
+    proto::PB_SC_ENTER_GAME_RESP* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_ENTER_GAME_RESP);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_leave_game(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_LEAVE_GAME_REQ& request,
+    proto::PB_SC_LEAVE_GAME_RESP* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    out_response->Clear();
+    fill_response_header(
+        out_response->mutable_header(),
+        request.header(),
+        proto::SC_LEAVE_GAME_RESP);
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    set_result_status(out_response->mutable_result(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_game_action(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_GAME_ACTION_REQ& request,
+    proto::PB_SC_ERROR_NOTIFY* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    fill_error_notify(out_response, request.header(), rc);
+    return rc;
+}
+
+int GateHubServer::handle_room_chat(
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    const proto::PB_CS_ROOM_CHAT_REQ& request,
+    proto::PB_SC_ERROR_NOTIFY* out_response,
+    uint64_t now_ms)
+{
+    int rc;
+
+    if (out_response == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
+    if (rc == proto::ERROR_CODE_OK) {
+        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+    }
+    fill_error_notify(out_response, request.header(), rc);
+    return rc;
 }
 
 GateHubRegistry* GateHubServer::registry()

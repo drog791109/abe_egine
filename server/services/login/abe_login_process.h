@@ -1,5 +1,5 @@
-#ifndef ABE_SERVICE_LOGIN_MANAGER_H
-#define ABE_SERVICE_LOGIN_MANAGER_H
+#ifndef ABE_SERVICE_LOGIN_PROCESS_H
+#define ABE_SERVICE_LOGIN_PROCESS_H
 
 #include "abe_snowflake.h"
 
@@ -18,7 +18,7 @@ enum {
     ABE_LOGIN_AUTH_TOKEN_MAX_SIZE = 256u
 };
 
-struct LoginManagerConfig {
+struct LoginProcessConfig {
     uint32_t max_accounts;
     uint32_t allow_register;
     uint32_t unique_nickname;
@@ -37,27 +37,35 @@ struct LoginAuthRequest {
     uint64_t now_ms;
 };
 
-struct LoginAccountInfo {
+struct LoginAccountData {
     uint64_t account_id;
     uint64_t uid;
+    uint64_t created_at_ms;
+    uint64_t last_login_time_ms;
+    char account_name[ABE_LOGIN_ACCOUNT_CAPACITY];
+    char device_id[ABE_LOGIN_DEVICE_ID_CAPACITY];
+    char client_version[ABE_LOGIN_CLIENT_VERSION_CAPACITY];
+};
+
+struct LoginPlayerData {
+    uint64_t uid;
+    uint64_t account_id;
     uint64_t created_at_ms;
     uint64_t last_login_time_ms;
     uint32_t sex;
     uint32_t avatar_id;
     uint32_t level;
-    char account_name[ABE_LOGIN_ACCOUNT_CAPACITY];
     char nickname[ABE_LOGIN_NICKNAME_CAPACITY];
-    char device_id[ABE_LOGIN_DEVICE_ID_CAPACITY];
-    char client_version[ABE_LOGIN_CLIENT_VERSION_CAPACITY];
     char region[ABE_LOGIN_REGION_CAPACITY];
 };
 
 struct LoginAuthResult {
-    LoginAccountInfo account;
+    LoginAccountData account_data;
+    LoginPlayerData player_data;
     uint32_t created;
 };
 
-void set_login_manager_defaults(LoginManagerConfig* config);
+void set_login_process_defaults(LoginProcessConfig* config);
 
 int login_validate_account_name(
     const char* account,
@@ -66,13 +74,13 @@ int login_validate_nickname(
     const char* nickname,
     const char* dirty_words);
 
-class LoginManager {
+class LoginProcess {
 public:
-    LoginManager();
-    ~LoginManager();
+    LoginProcess();
+    ~LoginProcess();
 
     int init(
-        const LoginManagerConfig& config,
+        const LoginProcessConfig& config,
         abe_snowflake_t* id_generator);
     void close();
 
@@ -81,24 +89,29 @@ public:
         LoginAuthResult* out_result);
     int create_account(
         const LoginAuthRequest& request,
-        LoginAccountInfo* out_account);
+        LoginAccountData* out_account_data,
+        LoginPlayerData* out_player_data);
     int mark_login_success(
         uint64_t uid,
         const LoginAuthRequest& request,
-        LoginAccountInfo* out_account);
+        LoginAccountData* out_account_data,
+        LoginPlayerData* out_player_data);
     int find_account_by_name(
         const char* account_name,
-        LoginAccountInfo* out_account) const;
+        LoginAccountData* out_account_data) const;
     int find_account_by_uid(
         uint64_t uid,
-        LoginAccountInfo* out_account) const;
+        LoginAccountData* out_account_data) const;
+    int find_player_by_uid(
+        uint64_t uid,
+        LoginPlayerData* out_player_data) const;
 
     uint32_t account_count() const;
     int initialized() const;
 
 private:
-    LoginManager(const LoginManager&);
-    LoginManager& operator=(const LoginManager&);
+    LoginProcess(const LoginProcess&);
+    LoginProcess& operator=(const LoginProcess&);
 
     struct AccountSlot;
 
@@ -109,7 +122,7 @@ private:
     AccountSlot* find_slot_by_nickname(const char* nickname);
     AccountSlot* find_free_slot();
 
-    LoginManagerConfig config_;
+    LoginProcessConfig config_;
     abe_snowflake_t* id_generator_;
     AccountSlot* accounts_;
     uint32_t account_count_;
@@ -120,4 +133,4 @@ private:
 } /* namespace service */
 } /* namespace abe */
 
-#endif /* ABE_SERVICE_LOGIN_MANAGER_H */
+#endif /* ABE_SERVICE_LOGIN_PROCESS_H */

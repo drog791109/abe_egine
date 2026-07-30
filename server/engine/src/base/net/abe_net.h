@@ -16,6 +16,7 @@ extern "C" {
 /*
  * TCP message framing:
  *   uint32 big-endian payload length + payload bytes.
+ *   payload length must be greater than 0.
  *
  * max_packet_size is the maximum payload length. When it is 0, the default is
  * ABE_NET_DEFAULT_MAX_PACKET_SIZE, which is smaller than 64 KiB.
@@ -35,6 +36,7 @@ typedef enum abe_net_status {
     ABE_NET_INVALID_ARG = ABE_INVALID_ARG,
     ABE_NET_NO_MEMORY = ABE_NO_MEMORY,
     ABE_NET_PACKET_TOO_LARGE = ABE_PACKET_TOO_LARGE,
+    ABE_NET_INVALID_LENGTH = ABE_INVALID_LENGTH,
     ABE_NET_WOULD_BLOCK = ABE_WOULD_BLOCK
 } abe_net_status_t;
 

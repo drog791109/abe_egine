@@ -1,12 +1,12 @@
 # Server 目录结构
 
-`server/` 是服务端源码根目录。目录按“基础设施、共享能力、业务逻辑、服务进程、协议定义”分层。下面的箭头表示“右侧可以依赖左侧”：
+`server/` 是服务端源码根目录。目录按“基础设施、共享能力、服务进程、协议定义”分层。下面的箭头表示“右侧可以依赖左侧”：
 
 ```text
-engine/base -> engine/common -> engine/adapters -> logic -> services
+engine/base -> engine/common -> engine/adapters -> services
                          \----> engine/backends --------> services
-engine/base -> engine/log ----------------------> logic/services
-proto definitions ------------------------------> common/logic/services
+engine/base -> engine/log ----------------------> services
+proto definitions ------------------------------> common/services
 ```
 
 ## 目录职责
@@ -20,7 +20,6 @@ server/
       log/        原生 C++ 日志封装，提供简洁的 C++11 接口和日志宏
       backends/   common/base 接口的具体实现，隔离 MySQL C API 等原始第三方接口
       adapters/   将 base/common 的 C 接口适配为不高于 C++11 的简单 RAII 和类接口
-  logic/          游戏业务逻辑和玩法模块，可使用 C++11+
   services/       可独立启动的服务进程入口和组装层
   share/proto/    协议定义源文件，分为 client 和 internal
 ```
@@ -43,17 +42,16 @@ server/
 
 ## 分层规则
 
-- `engine/src/base` 不依赖 `common`、`logic` 或 `services`。
-- `engine/src/common` 可以依赖 `base`，负责定义稳定的共享 C 接口，不依赖具体后端、C++ adapter、`logic` 或 `services`。
+- `engine/src/base` 不依赖 `common` 或 `services`。
+- `engine/src/common` 可以依赖 `base`，负责定义稳定的共享 C 接口，不依赖具体后端、C++ adapter 或 `services`。
 - `engine/src/backends` 可以依赖 `base`、`common` 和原始第三方库，负责实现 C 接口或提供最小 C ABI 桥接；第三方类型不得进入 `base/common` 公共头。
-- `engine/src/log` 直接封装原生 C++ 日志库，可依赖 `base/time` 获取时间，供 C++ 的 `logic/services` 使用；C 模块确实需要日志时，再单独设计最小 C 接口。
+- `engine/src/log` 直接封装原生 C++ 日志库，可依赖 `base/time` 获取时间，供 C++ 的 `services` 使用；C 模块确实需要日志时，再单独设计最小 C 接口。
 - `engine/src/adapters` 只依赖 `base/common` 暴露的 C 接口，将其适配为不高于 C++11 的简单 RAII 和类接口；不得承载 MySQL、spdlog 等具体后端实现。
 - 原生 C++ 库如果只供 C++ 模块使用，直接在对应 C++ 模块中使用，不为统一形式机械地再封装一层 C 接口。
 - 只有当 `base/common` 的 C 接口确实需要原生 C++ 实现时，才允许在 `backends` 中增加范围最小的 C ABI 桥接。
-- `logic` 可以依赖 `base`、`common`、`log` 和 `adapters`，但不得直接依赖具体 `backends` 或包含第三方后端头文件。
 - `services` 负责进程入口、配置加载、后端选择、依赖装配和服务生命周期，不承载复杂玩法逻辑。
-- `services/common` 放各服务进程都会复用的启动组件，例如 `ServiceRuntime`、命令行参数解析、配置/日志/DB 初始化和停止信号处理；不放具体服务业务规则。
-- `services/gateway` 负责把 `engine/adapters/net`、`logic/session` 和协议解码串起来；协议号和消息定义仍然以 `share/proto/client/protocol.proto` 为准。
+- `services/common` 放各服务进程都会复用的启动组件和服务侧公共组件，例如 `ServiceRuntime`、Session 生命周期、配置/日志/DB 初始化和停止信号处理；不放具体玩法规则。
+- `services/gateway` 负责把 `engine/adapters/net`、`services/common/session` 和协议解码串起来；协议号和消息定义仍然以 `share/proto/client/protocol.proto` 为准。
 - `services/login` 负责登录请求编排、账号/昵称校验、注册策略、登录返回资料和短期 session token 发放。
 - `services/gatehub` 负责维护登录后的在线连接索引、断线重连窗口和同账号重复登录顶替策略。
 - `share/proto/client` 放客户端协议，`share/proto/internal` 放服务间协议。
@@ -63,7 +61,7 @@ server/
 - 基础设施错误码统一放在 `engine/src/base/error/abe_error.h`，例如 `ABE_NOT_FOUND`、`ABE_PARSE_ERROR`、`ABE_CONNECT_FAILED`。
 - base/common/backends 模块可以保留自己的前缀状态名，例如 `ABE_CONFIG_NOT_FOUND`、`ABE_DB_QUERY_FAILED`，但这些值应当别名到 `abe_status_t`，不再维护各自独立的负数区间。
 - 客户端可见和业务逻辑错误放在 `share/proto/client/protocol.proto` 的 `ErrorCode`；服务层负责把底层 `abe_status_t` 转成合适的业务错误，不把基础设施错误号直接暴露给客户端。
-- `logic/services` 需要引用业务错误码时依赖 `abe_proto_client` 生成的 `protocol.pb.h`；本地状态名只能作为 `ErrorCode` 的兼容别名，不能再定义独立错误号。
+- `services` 需要引用业务错误码时依赖 `abe_proto_client` 生成的 `protocol.pb.h`；本地状态名只能作为 `ErrorCode` 的兼容别名，不能再定义独立错误号。
 
 数据库模块的目标结构示例：
 
@@ -123,7 +121,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - 调用每个服务模块的默认配置初始化。
 - 加载服务固定 JSON 配置文件，并按 `runtime.*`、`log.*`、后端配置和服务自己的配置段初始化。
 - 初始化日志。
-- 按需初始化 MySQL 工作线程连接池和 Redis 非阻塞连接，并通过 runtime context 交给具体服务。
+- 初始化必需的 MySQL 工作线程连接池和 Redis 非阻塞连接，并通过 runtime context 交给具体服务。
 - 创建雪花 ID 生成器，并通过 runtime context 交给具体服务。
 - 创建并持有网络 `Loop`、公共时间轮和公共消息处理队列。
 - 安装停止信号处理。
@@ -133,17 +131,9 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 每个具体服务保留自己的 server 对象，并继承公共 `Service` 接口。入口里只创建 server，然后调用
 `run(server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionServer、RPC 客户端、缓存连接等。
 
-## 逻辑层 RPC
+## 服务间消息
 
-`server/logic/rpc` 提供服务间调用的协程 RPC 核心：
-
-- `abe_logic_rpc` 是独立 target，使用 C++20 coroutine；这个标准只作用于 `logic/rpc`，不提升 `engine` 或其他 logic target 的编译标准。
-- RPC 复用 `engine/src/common/protocol/abe_protocol.h` 的 `abe_msg_header_t`，使用其中的 `rpc_id`、`source_server`、`target_server`、`route_type`、`flags` 和 `body_length` 承载服间请求/响应。
-- `RpcEndpoint` 不持有 TCP、Redis、Kafka 等具体连接，只通过 `RpcPacketSender` 回调发送已编码 packet；真实传输由 `services` 层装配。
-- 调用方使用 `co_await endpoint.call(request)` 等待 `RpcResponse`，每个 pending call 由 `rpc_id` 匹配响应。
-- 服务端通过 `set_handler(msg_id, handler, user_data)` 注册 handler；handler 可以同步 `send_response()`，也可以返回 `ABE_WOULD_BLOCK` 后异步响应。
-- `update(now_ms)` 负责检查 pending call 超时，超时后恢复挂起协程并返回 `ABE_TIMEOUT`。
-- 单向消息使用 `notify()`，不占用 pending call 槽位。
+服务间消息继续复用 `engine/src/common/protocol/abe_protocol.h` 的 `MsgHeader + Body` 包格式。当前仓库不再保留独立 RPC target；后续需要 RPC 客户端或服务端时，优先放在具体 `services` 模块或 `services/common` 的小型公共组件里，由服务层直接装配真实网络和后端连接。
 
 ## 玩家数据存储
 
@@ -154,7 +144,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - 每张表只展开业务查询、排序、分片或排障常用的固定列，例如 `uid`、`account_id`、`state`、`level`、`send_time_ms`、计数和版本字段。
 - 完整业务数据统一写入 `data_blob`，内容是对应的 `PB_*_DATA` protobuf 二进制。
 - `server/services/common/store` 提供 `PlayerStore` 抽象和 `MysqlPlayerStore` 实现；它依赖 `abe_db_t`，不直接暴露 MySQL 后端类型。
-- `logic` 层后续只依赖存储抽象和 protobuf 数据对象；真实 DB 连接仍由 `services` 装配。
+- 具体服务只依赖存储抽象和 protobuf 数据对象；真实 DB 连接仍由 `services` runtime 装配。
 
 背包内部按 protobuf 分成 `item_list`、`equipment_list`、`appearance_list`；邮件可按 `mail_id` 单封读取，也可按 `uid` 加状态加载列表。需要给运营或排障查询的新条件，优先补固定投影列；只参与业务内存计算、无需 SQL 查询的字段留在 protobuf blob 中。
 
@@ -182,14 +172,36 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - `GatewayServer` 默认配置文件是 `bin/gate.json`，服务进程不再接受命令行参数覆盖。
 - 网络 `Loop` 由 `ServiceRuntime` 创建和驱动，`GatewayServer` 只在初始化时把监听 server 挂到该 loop。
 - 进程采用单主循环事件驱动模型，不创建业务线程；需要扩容时优先多开进程实例。
-- `GatewayServer` 把 `TcpServer` 回调接到 `GatewaySession` 和逻辑 `SessionServer`。
-- `GatewaySession` 继承 `logic/session::Session`，是每条客户端 link 的会话对象。
+- `GatewayServer` 把 `TcpServer` 回调接到 `GatewaySession` 和 `service/session::SessionServer`。
+- `GatewaySession` 继承 `service/session::Session`，是每条客户端 link 的会话对象。
 - TCP 外层仍使用 `engine/base/net` 的 4 字节大端长度头。
 - TCP payload 是固定 `MsgHeader` 加变长 `Body`。`MsgHeader` 的二进制编解码在 `engine/src/common/protocol`。
 - `MsgHeader.msg_id` 是消息 ID，`Body` 是 `share/proto/client/protocol.proto` 中定义的 `PB_<消息ID枚举名>` protobuf 消息。
 - libevent 收到 TCP payload 后由 gateway 入队，runtime 出队时交给 `GatewayServer::process_message`；
   `GatewayServer` 找到对应 `GatewaySession`，由 `GatewaySession::handle_packet` 解固定头得到 `msg_id`
-  和 body，再走 session handler；具体 protobuf 对象由业务 session 自己解析。
+  和 body，再走 Gateway 自己的消息注册表；具体 protobuf 对象由成员处理函数解析。
+
+### Gateway 消息处理链条
+
+客户端到服务的消息处理按以下顺序执行：
+
+1. `ServiceRuntime::run_loop` 每 tick 调用 `context->loop->update()`，驱动 libevent 网络事件。
+2. `engine/src/base/net` 的 TCP read callback 按 4 字节大端长度头拆包，取出 payload。
+3. `engine/src/adapters/net` 把 C 网络回调转成 C++ `TcpLink` / `TcpListener` 的 `on_receive` 回调。
+4. `GatewayServer::tcp_on_receive` 调用 `GatewayServer::on_receive`。
+5. `GatewayServer::on_receive` 不直接执行业务，而是把 `TcpLink*`、`link_id`、packet 拷贝进公共 `MessageQueue`。
+6. `ServiceRuntime::update_message_queue` 按 `runtime.message_tick_hz` 驱动队列，每 tick 最多处理 `runtime.message_max_per_tick` 条。
+7. `MessageQueue::process` 构造 `service::common::Message`，调用当前 service 的 `process_message()`。
+8. `GatewayServer::process_message` 从 `Message.source` 取回 `TcpLink*`，再调用 `GatewayServer::dispatch`。
+9. `GatewayServer::dispatch` 根据 `link_id` 找到 `GatewaySession`，调用 `GatewaySession::handle_packet`。
+10. `GatewaySession::handle_packet` 使用 `abe_msg_packet_decode()` 解出 `MsgHeader` 和 body，更新会话接收时间，再按 `MsgHeader.msg_id` 分发。
+11. 登录、大厅和游戏消息按 ID 区间进入后端路由；Gateway 本地消息在所有 session 共享的静态 `handlers_` 中查找成员处理函数，并通过 `(this->*handler)(message)` 调用。
+
+回包链条是反向的：业务 handler 调 `Session::send()`，进入 `GatewaySession::on_send`，再调用 `TcpLink::send()`；底层 `abe_net_tcp_send()` 会重新加 4 字节长度头并写回 socket。
+
+服务间消息使用同一个 `MsgHeader + Body` 包格式。后续装配 RPC 或服务路由时继续复用 `rpc_id`、`source_server`、`target_server`、`route_type` 和 `flags` 字段。
+
+`GatewaySession` 构造时通过 `std::call_once` 初始化共享注册表，注册项是“消息 ID -> 非静态成员处理函数”，不再为每个 session 保存一份函数表。当前仅 `CS_PING` 由 Gateway 本地处理并回复 `PB_SC_PONG`；登录、角色、大厅和游戏请求进入后端路由，路由连接尚未装配时返回 `ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE`。当前登录业务 `LoginServer::handle_login()` 已实现 `PB_CS_LOGIN_REQ -> PB_SC_LOGIN_RESP` 的核心处理，后续需要把 Gateway 后端路由接到 login/gatehub 的服务间 handler 上。
 
 ## Login 和 GateHub 服务
 
@@ -239,7 +251,8 @@ gateway、login、gatehub 可执行文件分别输出到 `bin/abe_gateway`、`bi
 所以业务日志写文件，不会打印到启服终端；实时查看可以直接 tail 日志文件。
 
 gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。公共 runtime、日志、数据库、Redis
-和雪花 ID 设置也只从各服务固定 JSON 的对应字段读取。
+和雪花 ID 设置也只从各服务固定 JSON 的对应字段读取。MySQL 和 Redis 是服务启动必需依赖，
+runtime 初始化失败会直接停止服务启动。
 gateway、login 和 gatehub 的 JSON 配置字段都直接通过 `abe_config.h` 的 `abe_config_get_*`
 接口按 path 读取；服务代码不维护自己的配置读取接口。
 
@@ -256,7 +269,6 @@ log.file
 log.dir
 log.level
 log.utc_offset_minutes
-mysql.enable
 mysql.host
 mysql.port
 mysql.database
@@ -264,7 +276,6 @@ mysql.user
 mysql.password
 mysql.worker_count
 mysql.queue_capacity
-redis.enable
 redis.host
 redis.port
 redis.password

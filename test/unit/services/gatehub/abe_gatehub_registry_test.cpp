@@ -8,6 +8,7 @@
 
 namespace gatehub = abe::service::gatehub;
 namespace proto = abe::proto::client;
+namespace svc = abe::service::common;
 
 static int open_session(
     gatehub::GateHubRegistry* registry,
@@ -142,6 +143,68 @@ static int test_gatehub_reconnect_expire(void)
     return ABE_TEST_STATUS_OK;
 }
 
+static int test_gatehub_server_message_handlers(void)
+{
+    abe_snowflake_t* id_generator;
+    gatehub::GateHubServer server;
+    gatehub::GateHubOpenRequest open_request;
+    gatehub::GateHubOpenResult open_result;
+    proto::PB_CS_ENTER_LOBBY_REQ enter_lobby;
+    proto::PB_SC_ENTER_LOBBY_RESP lobby_response;
+    proto::PB_CS_ROOM_LIST_REQ room_list;
+    proto::PB_SC_ROOM_LIST_RESP room_list_response;
+    svc::Context context;
+
+    id_generator = NULL;
+    TEST_REQUIRE(abe_snowflake_create(13u, &id_generator) == ABE_OK);
+
+    memset(&context, 0, sizeof(context));
+    context.id_generator = id_generator;
+    TEST_REQUIRE(server.init(context) == svc::SERVICE_STATUS_OK);
+
+    memset(&open_request, 0, sizeof(open_request));
+    open_request.account_id = 4100u;
+    open_request.uid = 400u;
+    open_request.gateway_id = 4u;
+    open_request.connection_id = 44u;
+    open_request.now_ms = 1000u;
+    TEST_REQUIRE(server.registry()->open_session(open_request, &open_result) ==
+        proto::ERROR_CODE_OK);
+
+    enter_lobby.mutable_header()->set_protocol_id(proto::CS_ENTER_LOBBY_REQ);
+    enter_lobby.mutable_header()->set_seq(301u);
+    enter_lobby.set_uid(400u);
+    TEST_REQUIRE(server.handle_enter_lobby(
+            4u,
+            44u,
+            enter_lobby,
+            &lobby_response,
+            1010u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(lobby_response.header().protocol_id() == proto::SC_ENTER_LOBBY_RESP);
+    TEST_REQUIRE(lobby_response.header().seq() == 301u);
+    TEST_REQUIRE(lobby_response.result().error_code() == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(lobby_response.player().uid() == 400u);
+    TEST_REQUIRE(lobby_response.lobby_time_ms() == 1010u);
+
+    room_list.mutable_header()->set_protocol_id(proto::CS_ROOM_LIST_REQ);
+    room_list.mutable_header()->set_seq(302u);
+    room_list.set_uid(400u);
+    TEST_REQUIRE(server.handle_room_list(
+            4u,
+            44u,
+            room_list,
+            &room_list_response,
+            1020u) == proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
+    TEST_REQUIRE(room_list_response.header().protocol_id() == proto::SC_ROOM_LIST_RESP);
+    TEST_REQUIRE(room_list_response.header().seq() == 302u);
+    TEST_REQUIRE(room_list_response.result().error_code() ==
+        proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
+
+    server.close(2000u);
+    abe_snowflake_destroy(id_generator);
+    return ABE_TEST_STATUS_OK;
+}
+
 int main()
 {
     if (test_gatehub_reconnect() != ABE_TEST_STATUS_OK) {
@@ -151,6 +214,9 @@ int main()
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_gatehub_reconnect_expire() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+    if (test_gatehub_server_message_handlers() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     return ABE_TEST_STATUS_OK;

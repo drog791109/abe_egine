@@ -17,13 +17,11 @@ namespace abe {
 namespace service {
 namespace common {
 
-enum ServiceStatus {
-    SERVICE_STATUS_OK = ABE_OK,
-    SERVICE_STATUS_INVALID_ARG = ABE_INVALID_ARG,
-    SERVICE_STATUS_NO_SLOT = ABE_NO_SLOT,
-    SERVICE_STATUS_DUPLICATE = ABE_ALREADY_EXISTS,
-    SERVICE_STATUS_FAILED = ABE_ERROR
-};
+static const int SERVICE_STATUS_OK = ABE_OK;
+static const int SERVICE_STATUS_INVALID_ARG = ABE_INVALID_ARG;
+static const int SERVICE_STATUS_NO_SLOT = ABE_NO_SLOT;
+static const int SERVICE_STATUS_DUPLICATE = ABE_ALREADY_EXISTS;
+static const int SERVICE_STATUS_FAILED = ABE_ERROR;
 
 struct Message {
     void* source;

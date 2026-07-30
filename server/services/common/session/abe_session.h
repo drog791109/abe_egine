@@ -1,10 +1,10 @@
-#ifndef ABE_LOGIC_SESSION_H
-#define ABE_LOGIC_SESSION_H
+#ifndef ABE_SERVICE_SESSION_H
+#define ABE_SERVICE_SESSION_H
 
 #include <stdint.h>
 
 namespace abe {
-namespace logic {
+namespace service {
 namespace session {
 
 enum SessionState {
@@ -16,7 +16,7 @@ enum SessionState {
 };
 
 enum {
-    SESSION_MAX_MESSAGE_HANDLERS = 64u
+    SESSION_MAX_MESSAGE_ID = 65535u
 };
 
 class Session;
@@ -60,6 +60,21 @@ typedef int (*SessionSendHandler)(
     uint32_t size,
     void* user_data);
 
+struct SessionHandlerEntry {
+    SessionHandlerEntry();
+
+    SessionMessageHandler handler;
+    void* user_data;
+};
+
+struct SessionHandlerTable {
+    SessionHandlerTable();
+
+    SessionHandlerEntry* handlers;
+    uint32_t handler_count;
+    SessionHandlerEntry default_handler;
+};
+
 class Session {
 public:
     Session();
@@ -75,14 +90,22 @@ public:
     int leave_game();
     int leave_room();
 
-    int set_message_handler(
+    static int set_message_handler(
+        SessionHandlerTable* table,
         uint32_t message_id,
         SessionMessageHandler handler,
         void* user_data);
-    int clear_message_handler(uint32_t message_id);
-    void clear_message_handlers();
-    int set_default_message_handler(SessionMessageHandler handler, void* user_data);
-    void clear_default_message_handler();
+    static int clear_message_handler(SessionHandlerTable* table, uint32_t message_id);
+    static void clear_message_handlers(SessionHandlerTable* table);
+    static int set_default_message_handler(
+        SessionHandlerTable* table,
+        SessionMessageHandler handler,
+        void* user_data);
+    static void clear_default_message_handler(SessionHandlerTable* table);
+    static void init_handler_table(
+        SessionHandlerTable* table,
+        SessionHandlerEntry* handlers,
+        uint32_t handler_count);
     int handle_message(uint32_t message_id, const void* data, uint32_t size, uint64_t now_ms);
 
     void set_send_handler(SessionSendHandler handler, void* user_data);
@@ -107,29 +130,22 @@ protected:
     virtual int on_open(const SessionOpenRequest& request);
     virtual void on_close(uint32_t reason, uint64_t now_ms);
     virtual void on_reset();
+    virtual int on_send(const void* data, uint32_t size);
+    void mark_received(uint64_t now_ms);
+    void set_handler_table(SessionHandlerTable* table);
 
 private:
-    struct HandlerEntry {
-        HandlerEntry();
+    static SessionHandlerEntry* find_handler(SessionHandlerTable* table, uint32_t message_id);
 
-        uint32_t message_id;
-        SessionMessageHandler handler;
-        void* user_data;
-    };
-
-    HandlerEntry* find_handler(uint32_t message_id);
-
-    HandlerEntry default_handler_;
+    SessionHandlerTable* handler_table_;
     SessionSendHandler send_handler_;
     void* send_user_data_;
-    HandlerEntry handlers_[SESSION_MAX_MESSAGE_HANDLERS];
-    uint32_t handler_count_;
     SessionInfo info_;
     int active_;
 };
 
 } /* namespace session */
-} /* namespace logic */
+} /* namespace service */
 } /* namespace abe */
 
-#endif /* ABE_LOGIC_SESSION_H */
+#endif /* ABE_SERVICE_SESSION_H */

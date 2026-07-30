@@ -19,18 +19,17 @@ abe_engine/
 服务端源码按下面方向依赖：
 
 ```text
-engine/base -> engine/common -> engine/adapters -> logic -> services
+engine/base -> engine/common -> engine/adapters -> services
                          \----> engine/backends --------> services
-engine/base -> engine/log ----------------------> logic/services
-share/proto ------------------------------------> common/logic/services
+engine/base -> engine/log ----------------------> services
+share/proto ------------------------------------> common/services
 ```
 
 关键边界：
 
 - `engine/src/base` 和 `engine/src/common` 定义稳定 C 契约，不依赖上层。
-- `engine/src/backends` 放具体第三方后端实现，不被 `logic` 直接依赖。
+- `engine/src/backends` 放具体第三方后端实现，不向 engine 公共头泄漏第三方类型。
 - `engine/src/adapters` 只做 C API 到简单 C++11-or-earlier 接口的适配。
-- `logic` 放业务逻辑、状态机和可测试规则，不放进程入口和具体后端装配。
 - `services` 放服务进程入口、配置加载、依赖装配和生命周期，不承载复杂业务规则。
 - `share/proto` 放协议定义，不放生成代码和业务逻辑。
 
@@ -44,7 +43,7 @@ share/proto ------------------------------------> common/logic/services
 | `deploy/` | Docker、Kubernetes、systemd 等部署资产。 | 游戏逻辑、engine 实现、当前环境内的项目命令脚本。 | 按部署形态拆子目录，脚本只做环境和部署编排管理。 |
 | `doc/` | 架构设计、开发环境、目录职责、工程决策。 | 可执行源码、生成代码、大型二进制资产。 | 新增设计说明、ADR、目录契约和运维手册。 |
 | `scripts/` | 当前环境内运行的项目命令脚本，例如编译、测试、服务起停。 | Docker/Compose 环境控制、容器创建、部署编排模板。 | 后续新增服务时扩展 `services_start.sh` / `services_stop.sh` 的服务表。 |
-| `server/` | 服务端工程源码根目录。 | 测试工程、部署编排、长期架构文档。 | 按 `engine/logic/services/share` 分层补全。 |
+| `server/` | 服务端工程源码根目录。 | 测试工程、部署编排、长期架构文档。 | 按 `engine/services/share` 分层补全。 |
 | `test/` | 单元、集成、压测测试。 | 生产入口、真实部署配置。 | 与源码目录镜像对应，按风险补覆盖。 |
 
 ## 3. Codex 配置目录
@@ -66,7 +65,7 @@ share/proto ------------------------------------> common/logic/services
 | `deploy/k8s/` | Kubernetes manifests、Helm/Kustomize 配置、服务发现和健康检查部署模板。 | 本地 Docker 专用脚本、源码。 | 后续按 `gateway/session/coordinator/room/settlement` 拆 deployment/service/configmap。 |
 | `deploy/systemd/` | 单机或物理机部署的 unit、环境文件模板、滚动重启脚本。 | K8s manifest、业务逻辑。 | 适合 Room Server 或压测工具的物理机部署模板。 |
 
-部署目录只负责“如何运行”，不决定业务规则。业务规则放 `logic/`，进程组装放 `services/`。
+部署目录只负责“如何运行”，不决定业务规则。服务业务和进程组装统一放 `services/`。
 
 ## 5. 文档目录
 
@@ -83,7 +82,6 @@ share/proto ------------------------------------> common/logic/services
 ```text
 server/
   engine/       基础设施和共享能力
-  logic/        业务逻辑和状态机
   services/     进程入口和依赖装配
   share/proto/  协议定义
 ```
@@ -94,8 +92,8 @@ server/
 
 | 路径 | 放什么 | 不放什么 | 后续补全方向 |
 | --- | --- | --- | --- |
-| `server/engine/CMakeLists.txt` | engine 聚合构建入口。 | logic/services 构建规则。 | 只聚合 engine 内部 target。 |
-| `server/engine/src/base/` | 最底层基础设施 C API。 | common/logic/services 依赖、具体业务规则。 | 每个子模块独立 CMake target，公共头保持 C 兼容。 |
+| `server/engine/CMakeLists.txt` | engine 聚合构建入口。 | 具体服务业务规则。 | 聚合 engine、proto、services 和测试入口。 |
+| `server/engine/src/base/` | 最底层基础设施 C API。 | common/services 依赖、具体业务规则。 | 每个子模块独立 CMake target，公共头保持 C 兼容。 |
 | `server/engine/src/common/` | 跨服务稳定 C 接口和抽象。 | 具体 MySQL/Redis/Kafka/RabbitMQ 头、adapter C++ 便利层。 | DB、ID、RPC、服务发现等 C 契约。 |
 | `server/engine/src/log/` | spdlog 的薄 C++11 封装和日志宏。 | C ABI 日志桥、业务日志策略。 | 只有 C 模块真的需要时再新增最小 C 接口。 |
 | `server/engine/src/backends/` | 第三方依赖接入和 C 契约实现。 | 上层业务逻辑、C++ adapter。 | 每个后端单独 target，可选构建。 |
@@ -129,13 +127,13 @@ server/
 | `common/serialization/` | 通用序列化辅助和 buffer 契约。 | 具体玩法 payload 结构。 |
 | `common/service_discovery/` | 服务注册、发现、租约、健康状态的稳定接口。 | Etcd/Consul/ZooKeeper 具体客户端类型泄露。 |
 
-`common` 可以依赖 `base`，不得依赖 `backends/adapters/logic/services`。
+`common` 可以依赖 `base`，不得依赖 `backends/adapters/services`。
 
 #### 6.1.3 `engine/src/backends`
 
 | 路径 | 放什么 | 不放什么 |
 | --- | --- | --- |
-| `backends/db_mysql/` | 基于 MySQL C API 的同步访问和工作线程异步访问实现。 | 业务 SQL 组织、logic 直接依赖。 |
+| `backends/db_mysql/` | 基于 MySQL C API 的同步访问和工作线程异步访问实现。 | 业务 SQL 组织、服务业务直接散落。 |
 | `backends/redis/` | 基于 hiredis 的同步命令与非阻塞事件访问实现。 | 会话业务规则、排行榜规则。 |
 | `backends/kafka/` | 基于 librdkafka 的 producer/consumer 接口。 | 结算事件业务语义。 |
 | `backends/rabbitmq/` | 基于 rabbitmq-c 的 publish/consume 接口。 | 业务队列路由策略和 handler。 |
@@ -160,37 +158,28 @@ adapter 公共接口不得暴露 STL 容器、`std::function`、智能指针或�
 
 日志时间使用 `base/time` 的 real 时间接口，日期目录使用固定 UTC offset。
 
-### 6.2 `server/logic`
+### 6.2 已移除的独立逻辑层
 
-`server/logic` 是业务逻辑层。这里可以使用 C++11+，但不应把更高标准要求传递给 `engine`。`logic` 可以依赖 `engine/base`、`engine/common`、`engine/log`、`engine/adapters`，不得直接依赖具体 `engine/backends`。
-
-| 路径 | 放什么 | 不放什么 | 后续补全方向 |
-| --- | --- | --- | --- |
-| `logic/match/` | 匹配队列、匹配规则、组队/邀请/取消/超时状态机。 | 匹配服务 `main`、Redis/Kafka 具体客户端。 | 先补 `MatchTicket`、`MatchQueue`、`MatchRule`、`MatchProcessor`。 |
-| `logic/rpc/` | 基于 coroutine 的服务间 RPC endpoint、pending call、handler 分发和超时管理。 | TCP/Kafka/Redis 具体连接、服务进程入口。 | 服务层把真实传输接到 `RpcPacketSender`，逻辑层只处理请求/响应语义。 |
-| `logic/room/` | 房间 actor、成员状态、输入处理、tick 推进、广播裁剪、结算事件生成。 | TCP 监听入口、具体 DB/MQ 写入。 | 先补 `RoomActor`、`RoomState`、`RoomMessage`、`RoomRuntime`。 |
-| `logic/session/` | 玩家在线态、登录/心跳/断线/重连/踢人/顶号、连接绑定、房间绑定。 | Gateway 连接对象、具体 Redis 后端、服务进程入口。 | 单个 `Session` 处理收到的消息；`SessionManager` 只做索引、生命周期和过期清理。 |
-| `logic/settlement/` | 结算事件校验、幂等、奖励/战绩/任务结果生成、失败重试语义。 | 结算服务 `main`、MySQL/RabbitMQ/Kafka 具体调用。 | 先补 `SettlementProcessor`、`SettlementEvent`、`SettlementResult`、幂等存储接口。 |
-
-`logic` 中可测试规则优先写成纯对象或小状态机。需要外部存储、MQ、RPC 时，定义接口或输入输出结构，由 `services` 负责装配真实后端。
+当前代码不再保留单独的 logic 层；公共服务组件放入 `services/common`，具体业务编排放入对应 `services/<name>` 模块。后续如果出现真正可复用、可独立测试的玩法状态机，再按实际边界决定新目录，而不是预留空层。
 
 ### 6.3 `server/services`
 
-`server/services` 是进程入口和组装层。它负责把 `logic`、`engine`、配置、日志、RPC、DB/MQ/Cache 后端连接起来。
+`server/services` 是进程入口和组装层。它负责把 `engine`、配置、日志、服务间消息、DB/MQ/Cache 后端连接起来。
 
 | 路径 | 放什么 | 不放什么 | 后续补全方向 |
 | --- | --- | --- | --- |
-| `services/common/` | 各服务进程入口复用的轻量启动组件，例如 `ServiceRuntime`、命令行参数解析、配置/日志/DB 初始化、停止信号处理、统一启动返回码辅助。 | 具体服务的业务生命周期、网络监听对象、业务规则。 | 保持小而直接，只抽公共启动流程，不做成万能应用框架。 |
+| `services/common/` | 各服务进程入口复用的轻量启动组件，例如 `ServiceRuntime`、命令行参数解析、配置/日志/DB 初始化、停止信号处理、统一启动返回码辅助。 | 具体服务的业务生命周期、网络监听对象、玩法规则。 | 保持小而直接，只抽公共启动流程，不做成万能应用框架。 |
+| `services/common/session/` | 服务侧公共 Session 和 SessionServer 生命周期组件。 | Gateway 具体网络连接、登录账号规则、Redis 会话存储策略。 | 只保留连接绑定、状态流转、消息分发表等通用行为。 |
 | `services/common/store/` | 上层可复用的持久化 repository，例如 `PlayerStore` 和 MySQL 实现。 | engine 公共 DB 契约、具体玩法规则、客户端协议处理。 | 存储实现依赖 `abe_db_t` 和 `share/proto/store`，真实连接由服务装配。 |
 | `services/gateway/` | Gateway 进程入口、监听端口、连接生命周期、协议编解码接入、转发到后端服务。 | 账号登录规则、房间玩法逻辑。 | 装配 `adapters/net`，接入协议层和路由客户端。 |
 | `services/lobby/` | 大厅服务入口、低频玩家请求路由、账户/社交/匹配入口聚合。 | Gateway 长连接实现、Room tick。 | 后续可根据业务规模拆出独立服务。 |
-| `services/session/` | Session Service 进程入口、会话逻辑装配、会话存储/缓存后端选择、RPC handler。 | `Session` 内部状态流转。 | 调用 `logic/session`，连接 Redis 或其他会话存储。 |
+| `services/session/` | Session Service 进程入口、会话存储/缓存后端选择、服务间 handler。 | `services/common/session` 的基础状态流转。 | 连接 Redis 或其他会话存储。 |
 | `services/coordinator/` | Room Coordinator 服务入口、房间元数据逻辑装配、Allocator/RPC/后端选择、服务生命周期。 | 复杂房间规则直接写在进程入口。 | 负责创建/加入/关闭房间控制面，不承载 Room tick。 |
-| `services/match/` | Matchmaking Service 进程入口、匹配逻辑装配、队列分片、RPC handler。 | 匹配规则核心算法直接散在 main。 | 调用 `logic/match`。 |
-| `services/game/` | Room Server 或 Game Service 进程入口、房间 runtime 装配、worker/tick 生命周期。 | 登录/session 规则、具体 DB 业务写入。 | 调用 `logic/room`，输出结算事件。 |
-| `services/settlement/` | Settlement Service 进程入口、结算逻辑装配、DB/MQ/RPC 后端选择、补偿任务调度。 | 奖励计算细节直接写在进程入口。 | 调用 `logic/settlement`，持久化结果并投递事件。 |
+| `services/match/` | Matchmaking Service 进程入口、匹配逻辑装配、队列分片、服务间 handler。 | 匹配规则核心算法直接散在 main。 | 后续按业务规模拆公共匹配组件。 |
+| `services/game/` | Room Server 或 Game Service 进程入口、房间 runtime 装配、worker/tick 生命周期。 | 登录/session 规则、具体 DB 业务写入。 | 后续按业务规模拆公共房间组件，输出结算事件。 |
+| `services/settlement/` | Settlement Service 进程入口、结算逻辑装配、DB/MQ/RPC 后端选择、补偿任务调度。 | 奖励计算细节直接写在进程入口。 | 后续按业务规模拆公共结算组件，持久化结果并投递事件。 |
 
-服务目录可以依赖具体 `engine/backends`，但这种依赖应停留在装配层，不能倒灌到 `logic`。
+服务目录可以依赖具体 `engine/backends`，但这种依赖应停留在装配层，不能倒灌到 `engine/base` 或 `engine/common`。
 
 ### 6.4 `server/share/proto`
 
@@ -219,7 +208,7 @@ test/
 | `test/unit/backends/` | 后端头兼容性、可选后端最小行为测试。 | 业务逻辑测试。 |
 | `test/unit/adapters/` | C++ adapter 生命周期和封装行为测试。 | 原始第三方库完整集成测试。 |
 | `test/unit/log/` | 日志初始化、输出路径、轮转基础行为测试。 | 服务级日志字段语义。 |
-| `test/unit/logic/` | 业务状态机和纯逻辑测试。 | 真实服务进程启动。 |
+| `test/unit/services/` | 服务模块和 `services/common` 公共组件单元测试。 | 真实服务进程启动。 |
 | `test/integration/` | 需要 Docker 依赖服务、多模块组合、真实网络或真实后端的测试。 | 高频小单测。 |
 | `test/load/` | 机器人客户端、连接数、消息量、房间 tick 压测。 | 普通单元测试。 |
 
@@ -231,8 +220,8 @@ test/
 2. 基础设施和共享契约优先进入 `server/engine/src/base` 或 `server/engine/src/common`，公共接口保持 C/C++11 兼容。
 3. 具体第三方实现进入 `server/engine/src/backends`，不要让第三方头和类型出现在上层公共接口。
 4. C API 的 C++ 便利封装进入 `server/engine/src/adapters`，不要在 adapter 中实现具体后端。
-5. 业务状态机、规则、数据流转进入 `server/logic`，不要直接依赖具体 `backends`。
-6. 进程入口、配置加载、RPC handler 和真实后端装配进入 `server/services`。
+5. 业务状态机、规则、数据流转进入对应 `server/services/<name>` 模块；跨服务复用的小组件进入 `server/services/common`。
+6. 进程入口、配置加载、服务间 handler 和真实后端装配进入 `server/services`。
 7. 协议定义进入 `server/share/proto/client` 或 `server/share/proto/internal`，按可见范围区分。
 8. 基础设施错误码进入 `server/engine/src/base/error`，模块状态名只做别名；客户端可见和业务逻辑错误码进入 proto 的 `ErrorCode`。
 9. 单测跟随源码目录镜像放入 `test/unit`；真实外部依赖和跨进程测试放入 `test/integration`；容量验证放入 `test/load`。

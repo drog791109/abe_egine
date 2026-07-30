@@ -34,3 +34,5 @@ target_link_libraries(abe_player_store_proto_test
 )
 
 add_test(NAME abe_player_store_proto_test COMMAND abe_player_store_proto_test)
+
+add_subdirectory(session)

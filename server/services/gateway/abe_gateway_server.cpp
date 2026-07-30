@@ -267,12 +267,12 @@ int GatewayServer::on_disconnect(
     return close_session_for_link(link, (uint32_t)error_code, now_ms);
 }
 
-abe::logic::session::SessionServer* GatewayServer::session_server()
+abe::service::session::SessionServer* GatewayServer::session_server()
 {
     return &sessions_;
 }
 
-const abe::logic::session::SessionServer* GatewayServer::session_server() const
+const abe::service::session::SessionServer* GatewayServer::session_server() const
 {
     return &sessions_;
 }
@@ -325,7 +325,7 @@ void GatewayServer::tcp_on_disconnect(
 
 int GatewayServer::init_sessions()
 {
-    abe::logic::session::SessionServerConfig session_config;
+    abe::service::session::SessionServerConfig session_config;
     int rc;
 
     memset(&session_config, 0, sizeof(session_config));
@@ -381,8 +381,8 @@ int GatewayServer::open_session_for_link(
     abe::adapter::net::TcpLink* link,
     uint64_t now_ms)
 {
-    abe::logic::session::SessionOpenRequest request;
-    abe::logic::session::Session* session;
+    abe::service::session::SessionOpenRequest request;
+    abe::service::session::Session* session;
     GatewaySession* gateway_session;
     int status;
 

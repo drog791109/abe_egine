@@ -52,8 +52,8 @@ public:
         int error_code,
         uint64_t now_ms);
 
-    abe::logic::session::SessionServer* session_server();
-    const abe::logic::session::SessionServer* session_server() const;
+    abe::service::session::SessionServer* session_server();
+    const abe::service::session::SessionServer* session_server() const;
     int initialized() const;
 
 private:
@@ -96,7 +96,7 @@ private:
     GatewayServerConfig config_;
     abe::service::common::MessageQueue* message_queue_;
     abe::adapter::net::TcpServer tcp_;
-    abe::logic::session::SessionServer sessions_;
+    abe::service::session::SessionServer sessions_;
     GatewaySession session_slots_[ABE_GATEWAY_MAX_CLIENTS];
     abe::adapter::net::TcpLink link_slots_[ABE_GATEWAY_MAX_CLIENTS];
     int session_ready_;
