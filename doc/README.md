@@ -244,7 +244,36 @@ deploy/docker/dev.sh mirror-aliyun
 该命令会备份 `/etc/docker/daemon.json`，更新 `registry-mirrors`，然后重启 Docker daemon。
 如果当前用户不在 `docker` 组，脚本会提示输入 `sudo` 密码。
 
-## 4. Shell 脚本生成规则
+## 4. 编辑器与行尾设置
+
+仓库文本文件统一使用 LF 行尾，避免 Windows、VSCode 或共享目录把文件保存为 CRLF 后导致大量文件显示为
+已修改。项目已提供 `.vscode/settings.json`：
+
+```json
+{
+    "files.eol": "\n"
+}
+```
+
+Git 侧通过 `.gitattributes` 将文本文件规范化为 LF。开发机建议设置：
+
+```bash
+git config --global core.autocrlf input
+```
+
+如果 VSCode 或 `git status` 突然显示大量文件已修改，先检查是否只是 CRLF 变化：
+
+```bash
+git diff --ignore-cr-at-eol --stat
+```
+
+如果该命令没有输出，说明没有实际内容差异，可以把工作区恢复为仓库中的 LF 版本：
+
+```bash
+git restore .
+```
+
+## 5. Shell 脚本生成规则
 
 新增或修改 `*.sh` 文件时，文件开头必须保留 shebang，并紧跟运行示例和命令说明注释：
 
@@ -269,7 +298,7 @@ Shell 脚本保持 LF 行尾；需要直接执行的脚本应保留可执行权�
 - `scripts/` 下的脚本不负责启动 Docker、创建容器，也不把 `docker exec` 作为主要行为。默认先进入
   `dev` 容器 `/workspace`，再运行服务脚本。
 
-## 5. 启动与进入开发容器
+## 6. 启动与进入开发容器
 
 Docker 目录中提供统一操作脚本，脚本可以从任意目录执行：
 
