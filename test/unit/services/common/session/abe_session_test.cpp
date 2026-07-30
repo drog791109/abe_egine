@@ -2,7 +2,7 @@
 
 #include "protocol.pb.h"
 
-#include "../../abe_test.h"
+#include "../../../abe_test.h"
 
 #include <string.h>
 
