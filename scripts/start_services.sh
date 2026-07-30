@@ -21,17 +21,11 @@
 #
 # Environment:
 #   GATEWAY_BIN       Gateway binary path. Default: bin/abe_gateway
-#   GATEWAY_CONFIG    Gateway config path. Default: bin/gate.json
-#   GATEWAY_ARGS      Extra gateway arguments split by spaces.
 #   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
 #   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: ${OUT_DIR}/gateway/stdout.log
 #   GATEWAY_LOG_DIR   Gateway daily log root. Default: ${OUT_DIR}/gateway
 #   LOGIN_BIN         Login binary path. Default: bin/abe_login
-#   LOGIN_CONFIG      Login config path. Default: bin/login.json
-#   LOGIN_ARGS        Extra login arguments split by spaces.
 #   GATEHUB_BIN       Gatehub binary path. Default: bin/abe_gatehub
-#   GATEHUB_CONFIG    Gatehub config path. Default: bin/gatehub.json
-#   GATEHUB_ARGS      Extra gatehub arguments split by spaces.
 #
 # Note:
 #   This script does not build code, start Docker, or enter a container. Build
@@ -60,17 +54,11 @@ Defaults:
 
 Environment:
   GATEWAY_BIN       Gateway binary path. Default: bin/abe_gateway
-  GATEWAY_CONFIG    Gateway config path. Default: bin/gate.json
-  GATEWAY_ARGS      Extra gateway arguments split by spaces.
   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: ${OUT_DIR}/gateway/stdout.log
   GATEWAY_LOG_DIR   Gateway daily log root. Default: ${OUT_DIR}/gateway
   LOGIN_BIN         Login binary path. Default: bin/abe_login
-  LOGIN_CONFIG      Login config path. Default: bin/login.json
-  LOGIN_ARGS        Extra login arguments split by spaces.
   GATEHUB_BIN       Gatehub binary path. Default: bin/abe_gatehub
-  GATEHUB_CONFIG    Gatehub config path. Default: bin/gatehub.json
-  GATEHUB_ARGS      Extra gatehub arguments split by spaces.
 
 This script does not start Docker or enter a container. The default project
 runtime is the dev container /workspace; run this script there unless the host
@@ -167,16 +155,13 @@ write_pid_file() {
 }
 
 start_runtime_service() {
-  local service service_key binary_var config_var args_var pid_file_var out_file_var
-  local default_config binary config run_dir out_dir pid_file out_file service_args
+  local service service_key binary_var pid_file_var out_file_var
+  local default_config binary config run_dir out_dir pid_file out_file
   local pid state
-  local -a extra_args
 
   service=$1
   service_key=$(printf '%s' "${service}" | tr '[:lower:]' '[:upper:]')
   binary_var=${service_key}_BIN
-  config_var=${service_key}_CONFIG
-  args_var=${service_key}_ARGS
   pid_file_var=${service_key}_PID_FILE
   out_file_var=${service_key}_OUT_FILE
 
@@ -186,12 +171,11 @@ start_runtime_service() {
   fi
 
   binary=${!binary_var:-bin/abe_${service}}
-  config=${!config_var:-${default_config}}
+  config=${default_config}
   run_dir=${RUN_DIR:-bin/run}
   out_dir=${OUT_DIR:-bin/logs}
   pid_file=${!pid_file_var:-${run_dir}/${service}.pid}
   out_file=${!out_file_var:-${out_dir}/${service}/stdout.log}
-  service_args=${!args_var:-}
 
   mkdir -p "$(dirname "${pid_file}")" "$(dirname "${out_file}")"
 
@@ -212,12 +196,7 @@ start_runtime_service() {
     return 0
   fi
 
-  extra_args=()
-  if [ -n "${service_args}" ]; then
-    read -r -a extra_args <<< "${service_args}"
-  fi
-
-  nohup "${binary}" --config "${config}" "${extra_args[@]}" >"${out_file}" 2>&1 &
+  nohup "${binary}" >"${out_file}" 2>&1 &
   pid=$!
   sleep 1
 

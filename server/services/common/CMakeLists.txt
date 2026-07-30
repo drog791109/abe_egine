@@ -1,5 +1,4 @@
 add_library(abe_service_common STATIC
-    abe_service_args.cpp
     abe_service_runtime.cpp
 )
 
@@ -25,26 +24,24 @@ target_link_libraries(abe_service_common
         abe_engine_log
 )
 
-if(TARGET abe_backend_db_mysql)
-    target_compile_definitions(abe_service_common
-        PRIVATE
-            ABE_SERVICE_HAS_MYSQL=1
-    )
-    target_link_libraries(abe_service_common
-        PUBLIC
-            abe_backend_db_mysql
-    )
+if(NOT TARGET abe_backend_db_mysql)
+    message(FATAL_ERROR "abe_service_common requires abe_backend_db_mysql")
 endif()
 
-if(TARGET abe_backend_redis)
-    target_compile_definitions(abe_service_common
-        PRIVATE
-            ABE_SERVICE_HAS_REDIS=1
-    )
-    target_link_libraries(abe_service_common
-        PUBLIC
-            abe_backend_redis
-    )
+if(NOT TARGET abe_backend_redis)
+    message(FATAL_ERROR "abe_service_common requires abe_backend_redis")
 endif()
+
+target_compile_definitions(abe_service_common
+    PRIVATE
+        ABE_SERVICE_HAS_MYSQL=1
+        ABE_SERVICE_HAS_REDIS=1
+)
+
+target_link_libraries(abe_service_common
+    PUBLIC
+        abe_backend_db_mysql
+        abe_backend_redis
+)
 
 add_subdirectory(store)

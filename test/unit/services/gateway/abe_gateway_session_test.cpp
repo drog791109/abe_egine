@@ -1,4 +1,5 @@
 #include "abe_gateway_session.h"
+#include "abe_protocol.h"
 #include "abe_session_server.h"
 #include "protocol.pb.h"
 
@@ -48,6 +49,9 @@ static int test_gateway_session_routes_message(void)
     net::TcpLink link;
     MessageCounter counter;
     const char body[] = "abc";
+    abe_msg_header_t header;
+    unsigned char packet[ABE_MSG_HEADER_SIZE + sizeof(body)];
+    uint32_t written_size;
     int status;
 
     memset(&counter, 0, sizeof(counter));
@@ -78,7 +82,18 @@ static int test_gateway_session_routes_message(void)
     TEST_REQUIRE(slots[0].link_id() == request.link_id);
     TEST_REQUIRE((session::Session*)&slots[0] == logic_session);
 
-    TEST_REQUIRE(slots[0].handle_message(12004u, body, 3u, 200u) ==
+    abe_msg_header_init(&header);
+    header.msg_id = 12004u;
+    written_size = 0u;
+    TEST_REQUIRE(abe_msg_packet_encode(
+        &header,
+        body,
+        3u,
+        packet,
+        (uint32_t)sizeof(packet),
+        &written_size) == ABE_PROTOCOL_OK);
+
+    TEST_REQUIRE(slots[0].handle_packet(packet, written_size, 200u) ==
         proto::ERROR_CODE_OK);
     TEST_REQUIRE(counter.count == 1u);
     TEST_REQUIRE(counter.msg_id == 12004u);

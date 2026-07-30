@@ -1,7 +1,6 @@
 #include "abe_gateway_server.h"
 
 #include "abe_log.h"
-#include "abe_protocol.h"
 #include "abe_time.h"
 #include "protocol.pb.h"
 
@@ -19,14 +18,6 @@ enum {
     ABE_GATEWAY_DEFAULT_IDLE_TIMEOUT_MS = 60000u,
     ABE_GATEWAY_DEFAULT_SERVER_ID = 1u
 };
-
-static int protocol_status_to_session_status(int status)
-{
-    if (status == ABE_PROTOCOL_OK) {
-        return proto::ERROR_CODE_OK;
-    }
-    return proto::ERROR_CODE_COMMON_PROTOCOL_ERROR;
-}
 
 void set_gateway_defaults(GatewayServerConfig* config)
 {
@@ -232,8 +223,6 @@ int GatewayServer::on_receive(
     }
 
     rc = message_queue_->push(
-        GatewayServer::process_queued_message,
-        this,
         link,
         link_id(link),
         packet,
@@ -255,6 +244,19 @@ int GatewayServer::on_receive(
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
     return proto::ERROR_CODE_OK;
+}
+
+int GatewayServer::process_message(const abe::service::common::Message& message)
+{
+    if (message.source == NULL) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    return dispatch(
+        (abe::adapter::net::TcpLink*)message.source,
+        message.data,
+        message.data_size,
+        message.enqueue_time_ms);
 }
 
 int GatewayServer::on_disconnect(
@@ -319,23 +321,6 @@ void GatewayServer::tcp_on_disconnect(
     if (gateway != NULL) {
         (void)gateway->on_disconnect(link, error_code, abe_time_mono_ms());
     }
-}
-
-int GatewayServer::process_queued_message(
-    const abe::service::common::Message& message,
-    void* user_data)
-{
-    GatewayServer* gateway;
-
-    gateway = (GatewayServer*)user_data;
-    if (gateway == NULL || message.source == NULL) {
-        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
-    }
-    return gateway->dispatch(
-        (abe::adapter::net::TcpLink*)message.source,
-        message.data,
-        message.data_size,
-        message.enqueue_time_ms);
 }
 
 int GatewayServer::init_sessions()
@@ -442,10 +427,8 @@ int GatewayServer::dispatch(
     uint32_t packet_size,
     uint64_t now_ms)
 {
-    abe_msg_packet_view_t view;
     GatewaySession* session;
     uint64_t id;
-    int rc;
 
     if (!initialized() || link == NULL) {
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
@@ -457,19 +440,7 @@ int GatewayServer::dispatch(
         return proto::ERROR_CODE_SESSION_NOT_FOUND;
     }
 
-    rc = abe_msg_packet_decode(packet, packet_size, &view);
-    if (rc != ABE_PROTOCOL_OK) {
-        return protocol_status_to_session_status(rc);
-    }
-    if (view.header.msg_id == 0u) {
-        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
-    }
-
-    return session->handle_message(
-        view.header.msg_id,
-        view.body,
-        view.body_size,
-        now_ms);
+    return session->handle_packet(packet, packet_size, now_ms);
 }
 
 uint64_t GatewayServer::link_id(abe::adapter::net::TcpLink* link) const

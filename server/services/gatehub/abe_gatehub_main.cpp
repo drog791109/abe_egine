@@ -4,9 +4,9 @@
 namespace service_common = abe::service::common;
 namespace gatehub = abe::service::gatehub;
 
-int main(int argc, char** argv)
+int main()
 {
     gatehub::GateHubServer server;
 
-    return service_common::run(argc, argv, server);
+    return service_common::run(server);
 }

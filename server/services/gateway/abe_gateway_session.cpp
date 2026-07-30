@@ -1,5 +1,6 @@
 #include "abe_gateway_session.h"
 
+#include "abe_protocol.h"
 #include "protocol.pb.h"
 
 #include <stdint.h>
@@ -9,6 +10,14 @@ namespace service {
 namespace gateway {
 
 namespace proto = ::abe::proto::client;
+
+static int protocol_status_to_session_status(int status)
+{
+    if (status == ABE_PROTOCOL_OK) {
+        return proto::ERROR_CODE_OK;
+    }
+    return proto::ERROR_CODE_COMMON_PROTOCOL_ERROR;
+}
 
 GatewaySession::GatewaySession()
     : link_(NULL),
@@ -40,6 +49,33 @@ uint64_t GatewaySession::link_id() const
 abe::adapter::net::TcpLink* GatewaySession::link() const
 {
     return link_;
+}
+
+int GatewaySession::handle_packet(
+    const void* packet,
+    uint32_t packet_size,
+    uint64_t now_ms)
+{
+    abe_msg_packet_view_t view;
+    int rc;
+
+    if (!active()) {
+        return proto::ERROR_CODE_SESSION_CLOSED;
+    }
+
+    rc = abe_msg_packet_decode(packet, packet_size, &view);
+    if (rc != ABE_PROTOCOL_OK) {
+        return protocol_status_to_session_status(rc);
+    }
+    if (view.header.msg_id == 0u) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    return handle_message(
+        view.header.msg_id,
+        view.body,
+        view.body_size,
+        now_ms);
 }
 
 int GatewaySession::on_open(const abe::logic::session::SessionOpenRequest& request)

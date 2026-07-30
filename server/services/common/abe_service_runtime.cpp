@@ -32,6 +32,40 @@ enum {
     SERVICE_RUNTIME_DEFAULT_REDIS_PORT = 6379u
 };
 
+struct ServiceSettings {
+    uint32_t tick_ms;
+    uint32_t timer_max_count;
+    uint32_t message_tick_hz;
+    uint32_t message_max_per_tick;
+    uint32_t message_queue_capacity;
+
+    const char* log_output;
+    const char* log_file;
+    const char* log_dir;
+    const char* log_level;
+    int32_t log_utc_offset_minutes;
+
+    uint32_t mysql_enable;
+    const char* mysql_host;
+    uint32_t mysql_port;
+    const char* mysql_database;
+    const char* mysql_user;
+    const char* mysql_password;
+    uint32_t mysql_worker_count;
+    uint32_t mysql_queue_capacity;
+
+    uint32_t redis_enable;
+    const char* redis_host;
+    uint32_t redis_port;
+    const char* redis_password;
+    int32_t redis_database;
+    uint32_t redis_connect_timeout_ms;
+    uint32_t redis_command_timeout_ms;
+    uint64_t redis_memory_pool_capacity;
+
+    uint32_t id_node_id;
+};
+
 static volatile sig_atomic_t g_stop_requested = 0;
 
 static void on_signal(int value)
@@ -64,148 +98,11 @@ static void ignore_signal(int signal_value, const char* signal_name)
     install_signal_handler(signal_value, signal_name, SIG_IGN);
 }
 
-Options::Options(ServiceOption* options, uint32_t max_options)
-    : options_(options),
-      max_(max_options),
-      count_(0u)
-{
-    if (options_ != NULL && max_ != 0u) {
-        memset(options_, 0, sizeof(ServiceOption) * max_);
-    }
-}
-
-int Options::add_string(
-    const char* name,
-    const char* value_name,
-    const char* description,
-    const char** out_value)
-{
-    ServiceOption option;
-
-    memset(&option, 0, sizeof(option));
-    option.name = name;
-    option.value_name = value_name;
-    option.description = description;
-    option.type = SERVICE_OPTION_STRING;
-    option.out_value = out_value;
-    return add(option);
-}
-
-int Options::add_u32(
-    const char* name,
-    const char* value_name,
-    const char* description,
-    uint32_t min_value,
-    uint32_t max_value,
-    uint32_t* out_value)
-{
-    ServiceOption option;
-
-    memset(&option, 0, sizeof(option));
-    option.name = name;
-    option.value_name = value_name;
-    option.description = description;
-    option.type = SERVICE_OPTION_U32;
-    option.out_value = out_value;
-    option.min_value = min_value;
-    option.max_value = max_value;
-    return add(option);
-}
-
-int Options::add_u64(
-    const char* name,
-    const char* value_name,
-    const char* description,
-    uint64_t min_value,
-    uint64_t max_value,
-    uint64_t* out_value)
-{
-    ServiceOption option;
-
-    memset(&option, 0, sizeof(option));
-    option.name = name;
-    option.value_name = value_name;
-    option.description = description;
-    option.type = SERVICE_OPTION_U64;
-    option.out_value = out_value;
-    option.min_value = min_value;
-    option.max_value = max_value;
-    return add(option);
-}
-
-int Options::add_i32(
-    const char* name,
-    const char* value_name,
-    const char* description,
-    int32_t min_value,
-    int32_t max_value,
-    int32_t* out_value)
-{
-    ServiceOption option;
-
-    memset(&option, 0, sizeof(option));
-    option.name = name;
-    option.value_name = value_name;
-    option.description = description;
-    option.type = SERVICE_OPTION_I32;
-    option.out_value = out_value;
-    option.signed_min_value = min_value;
-    option.signed_max_value = max_value;
-    return add(option);
-}
-
-const ServiceOption* Options::data() const
-{
-    return options_;
-}
-
-uint32_t Options::count() const
-{
-    return count_;
-}
-
-int Options::add(const ServiceOption& option)
-{
-    if (options_ == NULL || option.name == NULL || option.out_value == NULL) {
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-    if (exists(option.name)) {
-        return SERVICE_STATUS_DUPLICATE;
-    }
-    if (count_ >= max_) {
-        return SERVICE_STATUS_NO_SLOT;
-    }
-
-    options_[count_] = option;
-    ++count_;
-    return SERVICE_STATUS_OK;
-}
-
-bool Options::exists(const char* name) const
-{
-    uint32_t index;
-
-    if (options_ == NULL || name == NULL) {
-        return false;
-    }
-
-    index = 0u;
-    while (index < count_) {
-        if (options_[index].name != NULL && strcmp(options_[index].name, name) == 0) {
-            return true;
-        }
-        ++index;
-    }
-    return false;
-}
-
 Service::~Service()
 {
 }
 
 struct MessageQueue::Entry {
-    MessageHandler handler;
-    void* user_data;
     void* source;
     uint64_t source_id;
     uint64_t enqueue_time_ms;
@@ -272,8 +169,6 @@ void MessageQueue::close()
 }
 
 int MessageQueue::push(
-    MessageHandler handler,
-    void* user_data,
     void* source,
     uint64_t source_id,
     const void* data,
@@ -283,8 +178,7 @@ int MessageQueue::push(
     Entry* entry;
     unsigned char* copied_data;
 
-    if (entries_ == NULL || capacity_ == 0u || handler == NULL ||
-        (data_size != 0u && data == NULL)) {
+    if (entries_ == NULL || capacity_ == 0u || (data_size != 0u && data == NULL)) {
         return SERVICE_STATUS_INVALID_ARG;
     }
     if (count_ >= capacity_) {
@@ -302,8 +196,6 @@ int MessageQueue::push(
 
     entry = &entries_[tail_];
     release_entry(entry);
-    entry->handler = handler;
-    entry->user_data = user_data;
     entry->source = source;
     entry->source_id = source_id;
     entry->enqueue_time_ms = now_ms;
@@ -319,6 +211,7 @@ int MessageQueue::push(
 }
 
 int MessageQueue::process(
+    Service& service,
     uint32_t max_count,
     uint32_t* out_processed_count,
     uint32_t* out_failed_count)
@@ -358,11 +251,11 @@ int MessageQueue::process(
         message.data = entry.data;
         message.data_size = entry.data_size;
 
-        rc = entry.handler(message, entry.user_data);
+        rc = service.process_message(message);
         if (rc != SERVICE_STATUS_OK) {
             ++failed_count;
             ABE_LOG_WARN(
-                "service message handler failed rc=%d status=%s source_id=%llu",
+                "service message process failed rc=%d status=%s source_id=%llu",
                 rc,
                 abe_status_name(rc),
                 (unsigned long long)entry.source_id);
@@ -409,15 +302,15 @@ void Service::defaults()
 {
 }
 
-int Service::options(Options& options)
-{
-    (void)options;
-    return SERVICE_STATUS_OK;
-}
-
 int Service::load_config(const abe_config_t* config)
 {
     (void)config;
+    return SERVICE_STATUS_OK;
+}
+
+int Service::process_message(const Message& message)
+{
+    (void)message;
     return SERVICE_STATUS_OK;
 }
 
@@ -496,7 +389,7 @@ static void shutdown_log_if_ready(bool* log_ready)
 
 static void set_runtime_defaults(
     const char* service_name,
-    RuntimeConfig* config)
+    ServiceSettings* config)
 {
     int timezone_offset;
 
@@ -539,287 +432,8 @@ static void set_runtime_defaults(
     config->id_node_id = 0u;
 }
 
-static int add_common_options(
-    RuntimeConfig* config,
-    Options& options)
-{
-    int rc;
-
-    if (config == NULL) {
-        return SERVICE_STATUS_INVALID_ARG;
-    }
-
-    rc = options.add_string("--config", "path", "json config file", &config->config_path);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--tick-ms",
-        "ms",
-        "main loop sleep, default 10",
-        0u,
-        1000u,
-        &config->tick_ms);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--timer-max-count",
-        "count",
-        "service time wheel maximum timers, default 65536",
-        1u,
-        1048576u,
-        &config->timer_max_count);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--message-tick-hz",
-        "hz",
-        "message queue process rate, default 30",
-        1u,
-        1000u,
-        &config->message_tick_hz);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--message-max-per-tick",
-        "count",
-        "maximum received messages processed per message tick, default 500",
-        1u,
-        100000u,
-        &config->message_max_per_tick);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--message-queue-capacity",
-        "count",
-        "received message queue capacity, default 65536",
-        1u,
-        1048576u,
-        &config->message_queue_capacity);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_string(
-        "--log-output",
-        "console|file|daily",
-        "log output, default console",
-        &config->log_output);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_string(
-        "--log-file",
-        "path",
-        "file log path when log-output=file",
-        &config->log_file);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_string(
-        "--log-dir",
-        "path",
-        "daily log root directory, default logs",
-        &config->log_dir);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_string(
-        "--log-level",
-        "level",
-        "trace/debug/info/warn/error/critical/off",
-        &config->log_level);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_i32(
-        "--log-utc-offset-min",
-        "minutes",
-        "log timezone offset minutes",
-        -840,
-        840,
-        &config->log_utc_offset_minutes);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--mysql-enable",
-        "0|1",
-        "connect mysql during startup, default 0",
-        0u,
-        1u,
-        &config->mysql_enable);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_string(
-        "--mysql-host",
-        "host",
-        "mysql host, default 127.0.0.1",
-        &config->mysql_host);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--mysql-port",
-        "port",
-        "mysql port, default 3306",
-        1u,
-        65535u,
-        &config->mysql_port);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_string(
-        "--mysql-database",
-        "name",
-        "mysql database",
-        &config->mysql_database);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_string("--mysql-user", "user", "mysql user", &config->mysql_user);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_string(
-        "--mysql-password",
-        "password",
-        "mysql password",
-        &config->mysql_password);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--mysql-workers",
-        "count",
-        "mysql async worker connections, default 4",
-        1u,
-        32u,
-        &config->mysql_worker_count);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--mysql-queue-capacity",
-        "count",
-        "mysql async maximum outstanding requests, default 4096",
-        1u,
-        1048576u,
-        &config->mysql_queue_capacity);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    rc = options.add_u32(
-        "--redis-enable",
-        "0|1",
-        "connect redis during startup, default 0",
-        0u,
-        1u,
-        &config->redis_enable);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = options.add_string(
-        "--redis-host",
-        "host",
-        "redis host, default 127.0.0.1",
-        &config->redis_host);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = options.add_u32(
-        "--redis-port",
-        "port",
-        "redis port, default 6379",
-        1u,
-        65535u,
-        &config->redis_port);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = options.add_string(
-        "--redis-password",
-        "password",
-        "redis password",
-        &config->redis_password);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = options.add_i32(
-        "--redis-database",
-        "index",
-        "redis database index, default 0",
-        0,
-        255,
-        &config->redis_database);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = options.add_u32(
-        "--redis-connect-timeout-ms",
-        "ms",
-        "redis connect timeout, default 1000",
-        0u,
-        60000u,
-        &config->redis_connect_timeout_ms);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = options.add_u32(
-        "--redis-command-timeout-ms",
-        "ms",
-        "redis command timeout, default 1000",
-        0u,
-        60000u,
-        &config->redis_command_timeout_ms);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-    rc = options.add_u64(
-        "--redis-memory-pool-capacity",
-        "bytes",
-        "redis memory pool capacity, default backend value",
-        0u,
-        0xffffffffffffffffull,
-        &config->redis_memory_pool_capacity);
-    if (rc != SERVICE_STATUS_OK) {
-        return rc;
-    }
-
-    return options.add_u32(
-        "--id-node-id",
-        "0-1023",
-        "globally unique snowflake node id",
-        0u,
-        ABE_SNOWFLAKE_MAX_NODE_ID,
-        &config->id_node_id);
-}
-
 static int load_config_file(
-    const RuntimeConfig* runtime_config,
+    const char* config_path,
     abe_config_t** out_config)
 {
     if (out_config == NULL) {
@@ -827,15 +441,13 @@ static int load_config_file(
     }
     *out_config = NULL;
 
-    if (runtime_config == NULL ||
-        runtime_config->config_path == NULL ||
-        runtime_config->config_path[0] == '\0') {
+    if (config_path == NULL || config_path[0] == '\0') {
         return SERVICE_STATUS_OK;
     }
-    if (abe_config_load_json_file(runtime_config->config_path, out_config) != ABE_CONFIG_OK) {
+    if (abe_config_load_json_file(config_path, out_config) != ABE_CONFIG_OK) {
         ABE_LOG_ERROR(
             "service config load failed path=%s status=%s",
-            runtime_config->config_path,
+            config_path,
             abe_status_name(SERVICE_STATUS_FAILED));
         return SERVICE_STATUS_FAILED;
     }
@@ -961,17 +573,17 @@ static int read_config_u64(
 }
 
 static int apply_runtime_config(
-    RuntimeConfig* runtime_config,
+    ServiceSettings* settings,
     const abe_config_t* config)
 {
     int rc;
 
-    if (runtime_config == NULL || config == NULL) {
+    if (settings == NULL || config == NULL) {
         return SERVICE_STATUS_OK;
     }
 
     rc = read_config_u32(
-        config, "runtime.tick_ms", 0u, 1000u, &runtime_config->tick_ms);
+        config, "runtime.tick_ms", 0u, 1000u, &settings->tick_ms);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -980,7 +592,7 @@ static int apply_runtime_config(
         "runtime.timer_max_count",
         1u,
         1048576u,
-        &runtime_config->timer_max_count);
+        &settings->timer_max_count);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -989,7 +601,7 @@ static int apply_runtime_config(
         "runtime.message_tick_hz",
         1u,
         1000u,
-        &runtime_config->message_tick_hz);
+        &settings->message_tick_hz);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -998,7 +610,7 @@ static int apply_runtime_config(
         "runtime.message_max_per_tick",
         1u,
         100000u,
-        &runtime_config->message_max_per_tick);
+        &settings->message_max_per_tick);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -1007,23 +619,23 @@ static int apply_runtime_config(
         "runtime.message_queue_capacity",
         1u,
         1048576u,
-        &runtime_config->message_queue_capacity);
+        &settings->message_queue_capacity);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "log.output", &runtime_config->log_output);
+    rc = read_config_string(config, "log.output", &settings->log_output);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "log.file", &runtime_config->log_file);
+    rc = read_config_string(config, "log.file", &settings->log_file);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "log.dir", &runtime_config->log_dir);
+    rc = read_config_string(config, "log.dir", &settings->log_dir);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "log.level", &runtime_config->log_level);
+    rc = read_config_string(config, "log.level", &settings->log_level);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -1032,34 +644,34 @@ static int apply_runtime_config(
         "log.utc_offset_minutes",
         -840,
         840,
-        &runtime_config->log_utc_offset_minutes);
+        &settings->log_utc_offset_minutes);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
     rc = read_config_u32(
-        config, "mysql.enable", 0u, 1u, &runtime_config->mysql_enable);
+        config, "mysql.enable", 0u, 1u, &settings->mysql_enable);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "mysql.host", &runtime_config->mysql_host);
+    rc = read_config_string(config, "mysql.host", &settings->mysql_host);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
     rc = read_config_u32(
-        config, "mysql.port", 1u, 65535u, &runtime_config->mysql_port);
+        config, "mysql.port", 1u, 65535u, &settings->mysql_port);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
     rc = read_config_string(
-        config, "mysql.database", &runtime_config->mysql_database);
+        config, "mysql.database", &settings->mysql_database);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "mysql.user", &runtime_config->mysql_user);
+    rc = read_config_string(config, "mysql.user", &settings->mysql_user);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "mysql.password", &runtime_config->mysql_password);
+    rc = read_config_string(config, "mysql.password", &settings->mysql_password);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -1068,7 +680,7 @@ static int apply_runtime_config(
         "mysql.worker_count",
         1u,
         32u,
-        &runtime_config->mysql_worker_count);
+        &settings->mysql_worker_count);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -1077,28 +689,28 @@ static int apply_runtime_config(
         "mysql.queue_capacity",
         1u,
         1048576u,
-        &runtime_config->mysql_queue_capacity);
+        &settings->mysql_queue_capacity);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
 
-    rc = read_config_u32(config, "redis.enable", 0u, 1u, &runtime_config->redis_enable);
+    rc = read_config_u32(config, "redis.enable", 0u, 1u, &settings->redis_enable);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "redis.host", &runtime_config->redis_host);
+    rc = read_config_string(config, "redis.host", &settings->redis_host);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_u32(config, "redis.port", 1u, 65535u, &runtime_config->redis_port);
+    rc = read_config_u32(config, "redis.port", 1u, 65535u, &settings->redis_port);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_string(config, "redis.password", &runtime_config->redis_password);
+    rc = read_config_string(config, "redis.password", &settings->redis_password);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
-    rc = read_config_i32(config, "redis.database", 0, 255, &runtime_config->redis_database);
+    rc = read_config_i32(config, "redis.database", 0, 255, &settings->redis_database);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -1107,7 +719,7 @@ static int apply_runtime_config(
         "redis.connect_timeout_ms",
         0u,
         60000u,
-        &runtime_config->redis_connect_timeout_ms);
+        &settings->redis_connect_timeout_ms);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -1116,7 +728,7 @@ static int apply_runtime_config(
         "redis.command_timeout_ms",
         0u,
         60000u,
-        &runtime_config->redis_command_timeout_ms);
+        &settings->redis_command_timeout_ms);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -1125,7 +737,7 @@ static int apply_runtime_config(
         "redis.memory_pool_capacity",
         0u,
         0xffffffffffffffffull,
-        &runtime_config->redis_memory_pool_capacity);
+        &settings->redis_memory_pool_capacity);
     if (rc != SERVICE_STATUS_OK) {
         return rc;
     }
@@ -1134,12 +746,12 @@ static int apply_runtime_config(
         "id.node_id",
         0u,
         ABE_SNOWFLAKE_MAX_NODE_ID,
-        &runtime_config->id_node_id);
+        &settings->id_node_id);
 }
 
 static int init_log(
     const char* service_name,
-    const RuntimeConfig* config)
+    const ServiceSettings* config)
 {
     const char* log_output;
     abe::log::level log_level;
@@ -1202,7 +814,7 @@ static int init_log(
 }
 
 static int init_mysql(
-    const RuntimeConfig* config,
+    const ServiceSettings* config,
     abe_db_mysql_async_t** out_mysql)
 {
 #ifdef ABE_SERVICE_HAS_MYSQL
@@ -1257,7 +869,7 @@ static int init_mysql(
 }
 
 static int init_redis(
-    const RuntimeConfig* config,
+    const ServiceSettings* config,
     abe_redis_async_t** out_redis)
 {
 #ifdef ABE_SERVICE_HAS_REDIS
@@ -1306,7 +918,7 @@ static int init_redis(
 }
 
 static int init_time_wheel(
-    const RuntimeConfig* config,
+    const ServiceSettings* config,
     abe_time_wheel_t** out_time_wheel)
 {
     abe_time_wheel_config_t wheel_config;
@@ -1345,7 +957,7 @@ static int init_time_wheel(
 }
 
 static int init_message_queue(
-    const RuntimeConfig* config,
+    const ServiceSettings* config,
     MessageQueue* queue)
 {
     uint32_t capacity;
@@ -1371,7 +983,7 @@ static int init_message_queue(
     return SERVICE_STATUS_OK;
 }
 
-static uint32_t message_tick_interval_ms(const RuntimeConfig* config)
+static uint32_t message_tick_interval_ms(const ServiceSettings* config)
 {
     uint32_t tick_hz;
     uint32_t interval_ms;
@@ -1383,7 +995,7 @@ static uint32_t message_tick_interval_ms(const RuntimeConfig* config)
     return interval_ms == 0u ? 1u : interval_ms;
 }
 
-static uint32_t message_max_per_tick(const RuntimeConfig* config)
+static uint32_t message_max_per_tick(const ServiceSettings* config)
 {
     if (config == NULL || config->message_max_per_tick == 0u) {
         return SERVICE_RUNTIME_DEFAULT_MESSAGE_MAX_PER_TICK;
@@ -1393,7 +1005,8 @@ static uint32_t message_max_per_tick(const RuntimeConfig* config)
 
 static int update_message_queue(
     Context* context,
-    const RuntimeConfig* config,
+    Service& service,
+    const ServiceSettings* config,
     uint64_t now_ms,
     uint64_t* next_tick_ms)
 {
@@ -1412,6 +1025,7 @@ static int update_message_queue(
     processed_count = 0u;
     failed_count = 0u;
     rc = context->message_queue->process(
+        service,
         message_max_per_tick(config),
         &processed_count,
         &failed_count);
@@ -1433,7 +1047,7 @@ static int update_message_queue(
 static int run_loop(
     Context* context,
     Service& service,
-    const RuntimeConfig* runtime_config)
+    const ServiceSettings* settings)
 {
     uint64_t next_message_tick_ms;
     uint32_t tick_ms;
@@ -1443,9 +1057,9 @@ static int run_loop(
     reset_stop();
     install_stop_signal_handlers();
 
-    tick_ms = runtime_config == NULL
+    tick_ms = settings == NULL
         ? SERVICE_RUNTIME_DEFAULT_TICK_MS
-        : runtime_config->tick_ms;
+        : settings->tick_ms;
     next_message_tick_ms = abe_time_mono_ms();
 
     result = SERVICE_STATUS_OK;
@@ -1471,7 +1085,12 @@ static int run_loop(
         }
 
         now_ms = abe_time_mono_ms();
-        rc = update_message_queue(context, runtime_config, now_ms, &next_message_tick_ms);
+        rc = update_message_queue(
+            context,
+            service,
+            settings,
+            now_ms,
+            &next_message_tick_ms);
         if (rc != SERVICE_STATUS_OK) {
             result = rc;
             break;
@@ -1515,55 +1134,10 @@ static int run_loop(
     return result;
 }
 
-static int parse_config_option(
-    int argc,
-    char** argv,
-    RuntimeConfig* runtime_config)
+int run(Service& service)
 {
-    int index;
-
-    if (argc < 0 || argv == NULL || runtime_config == NULL) {
-        return SERVICE_ARG_INVALID_ARG;
-    }
-
-    index = 1;
-    while (index < argc) {
-        if (argv[index] == NULL) {
-            return SERVICE_ARG_INVALID_ARG;
-        }
-        if (strcmp(argv[index], "--help") == 0) {
-            return SERVICE_ARG_HELP;
-        }
-        if (strcmp(argv[index], "--config") == 0) {
-            if (index + 1 >= argc || argv[index + 1] == NULL) {
-                return SERVICE_ARG_MISSING_VALUE;
-            }
-            runtime_config->config_path = argv[index + 1];
-            index += 2;
-            continue;
-        }
-        index += 1;
-    }
-    return SERVICE_ARG_OK;
-}
-
-static void log_option_registration_failed(
-    const char* service_name,
-    int rc)
-{
-    ABE_LOG_ERROR(
-        "service option registration failed service=%s rc=%d status=%s",
-        service_name == NULL ? "" : service_name,
-        rc,
-        abe_status_name(rc));
-}
-
-int run(int argc, char** argv, Service& service)
-{
-    RuntimeConfig runtime_config;
+    ServiceSettings settings;
     Context context;
-    ServiceOption options[SERVICE_RUNTIME_MAX_OPTIONS];
-    Options option_list(options, SERVICE_RUNTIME_MAX_OPTIONS);
     abe_config_t* config;
     abe_db_mysql_async_t* mysql;
     abe_redis_async_t* redis;
@@ -1579,6 +1153,7 @@ int run(int argc, char** argv, Service& service)
     bool log_ready;
     int rc;
     int result;
+    const char* config_path;
 
     service_name = service.name();
     if (service_name == NULL || service_name[0] == '\0') {
@@ -1586,44 +1161,17 @@ int run(int argc, char** argv, Service& service)
     }
     log_ready = init_startup_log(service_name);
 
-    set_runtime_defaults(service_name, &runtime_config);
-    runtime_config.config_path = service.config_path();
-
+    set_runtime_defaults(service_name, &settings);
     service.defaults();
 
-    rc = add_common_options(&runtime_config, option_list);
-    if (rc == SERVICE_STATUS_OK) {
-        rc = service.options(option_list);
-    }
-    if (rc != SERVICE_STATUS_OK) {
-        log_option_registration_failed(service_name, rc);
-        shutdown_log_if_ready(&log_ready);
-        return rc;
-    }
-
-    rc = parse_config_option(argc, argv, &runtime_config);
-    if (rc == SERVICE_ARG_HELP) {
-        service_log_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
-        shutdown_log_if_ready(&log_ready);
-        return SERVICE_STATUS_OK;
-    }
-    if (rc != SERVICE_ARG_OK) {
-        ABE_LOG_ERROR(
-            "service config option parse failed rc=%d status=%s",
-            rc,
-            abe_status_name(rc));
-        service_log_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
-        shutdown_log_if_ready(&log_ready);
-        return rc;
-    }
-
+    config_path = service.config_path();
     config = NULL;
-    rc = load_config_file(&runtime_config, &config);
+    rc = load_config_file(config_path, &config);
     if (rc != SERVICE_STATUS_OK) {
         shutdown_log_if_ready(&log_ready);
         return rc;
     }
-    rc = apply_runtime_config(&runtime_config, config);
+    rc = apply_runtime_config(&settings, config);
     if (rc != SERVICE_STATUS_OK) {
         if (config != NULL) {
             abe_config_destroy(config);
@@ -1639,25 +1187,8 @@ int run(int argc, char** argv, Service& service)
         shutdown_log_if_ready(&log_ready);
         return rc;
     }
-    rc = service_parse_options(argc, argv, option_list.data(), option_list.count());
-    if (rc == SERVICE_ARG_HELP) {
-        service_log_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
-        if (config != NULL) {
-            abe_config_destroy(config);
-        }
-        shutdown_log_if_ready(&log_ready);
-        return SERVICE_STATUS_OK;
-    }
-    if (rc != SERVICE_ARG_OK) {
-        service_log_usage(argv == NULL ? NULL : argv[0], option_list.data(), option_list.count());
-        if (config != NULL) {
-            abe_config_destroy(config);
-        }
-        shutdown_log_if_ready(&log_ready);
-        return rc;
-    }
 
-    rc = init_log(service_name, &runtime_config);
+    rc = init_log(service_name, &settings);
     if (rc != SERVICE_STATUS_OK) {
         if (config != NULL) {
             abe_config_destroy(config);
@@ -1667,9 +1198,9 @@ int run(int argc, char** argv, Service& service)
     }
 
     id_generator = NULL;
-    rc = abe_snowflake_create((uint16_t)runtime_config.id_node_id, &id_generator);
+    rc = abe_snowflake_create((uint16_t)settings.id_node_id, &id_generator);
     if (rc != ABE_SNOWFLAKE_OK) {
-        ABE_LOG_ERROR("snowflake init failed rc=%d node_id=%u", rc, runtime_config.id_node_id);
+        ABE_LOG_ERROR("snowflake init failed rc=%d node_id=%u", rc, settings.id_node_id);
         abe::log::shutdown();
         if (config != NULL) {
             abe_config_destroy(config);
@@ -1678,7 +1209,7 @@ int run(int argc, char** argv, Service& service)
     }
 
     mysql = NULL;
-    rc = init_mysql(&runtime_config, &mysql);
+    rc = init_mysql(&settings, &mysql);
     if (rc != SERVICE_STATUS_OK) {
         abe_snowflake_destroy(id_generator);
         abe::log::shutdown();
@@ -1689,7 +1220,7 @@ int run(int argc, char** argv, Service& service)
     }
 
     redis = NULL;
-    rc = init_redis(&runtime_config, &redis);
+    rc = init_redis(&settings, &redis);
     if (rc != SERVICE_STATUS_OK) {
 #ifdef ABE_SERVICE_HAS_MYSQL
         if (mysql != NULL) {
@@ -1718,12 +1249,12 @@ int run(int argc, char** argv, Service& service)
         result = rc;
     } else {
         loop_ready = 1;
-        rc = init_time_wheel(&runtime_config, &time_wheel);
+        rc = init_time_wheel(&settings, &time_wheel);
         if (rc != SERVICE_STATUS_OK) {
             result = rc;
         } else {
             time_wheel_ready = 1;
-            rc = init_message_queue(&runtime_config, &message_queue);
+            rc = init_message_queue(&settings, &message_queue);
             if (rc != SERVICE_STATUS_OK) {
                 result = rc;
             } else {
@@ -1735,7 +1266,6 @@ int run(int argc, char** argv, Service& service)
                 context.mysql = mysql;
                 context.redis = redis;
                 context.id_generator = id_generator;
-                context.runtime = &runtime_config;
 
                 rc = service.init(context);
                 if (rc != SERVICE_STATUS_OK) {
@@ -1744,7 +1274,7 @@ int run(int argc, char** argv, Service& service)
                 } else {
                     service_ready = 1;
                     ABE_LOG_INFO("service started name=%s", service_name);
-                    result = run_loop(&context, service, &runtime_config);
+                    result = run_loop(&context, service, &settings);
                 }
             }
         }

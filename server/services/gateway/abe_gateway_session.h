@@ -21,6 +21,7 @@ public:
     int active() const;
     uint64_t link_id() const;
     abe::adapter::net::TcpLink* link() const;
+    int handle_packet(const void* packet, uint32_t packet_size, uint64_t now_ms);
 
 protected:
     virtual int on_open(const abe::logic::session::SessionOpenRequest& request);

@@ -121,8 +121,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 `server/services/common` 提供轻量的 `ServiceRuntime` 进程骨架。公共 runtime 负责：
 
 - 调用每个服务模块的默认配置初始化。
-- 合并公共参数和服务自己的参数表，并统一解析命令行。
-- 加载可选 JSON 配置文件，命令行参数最终覆盖配置文件。
+- 加载服务固定 JSON 配置文件，并按 `runtime.*`、`log.*`、后端配置和服务自己的配置段初始化。
 - 初始化日志。
 - 按需初始化 MySQL 工作线程连接池和 Redis 非阻塞连接，并通过 runtime context 交给具体服务。
 - 创建雪花 ID 生成器，并通过 runtime context 交给具体服务。
@@ -132,7 +131,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - 关闭服务，再销毁消息队列、时间轮、网络 `Loop`、Redis、MySQL 工作线程、雪花 ID、配置和日志。
 
 每个具体服务保留自己的 server 对象，并继承公共 `Service` 接口。入口里只创建 server，然后调用
-`run(argc, argv, server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionServer、RPC 客户端、缓存连接等。
+`run(server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionServer、RPC 客户端、缓存连接等。
 
 ## 逻辑层 RPC
 
@@ -180,7 +179,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - gateway 可执行文件固定输出到 `bin/abe_gateway`，配置文件固定使用 `bin/gate.json`。
 - `abe_gateway_main.cpp` 只创建 `GatewayServer`，然后调用公共 `run()`。
 - `GatewayServer` 是普通 server 对象，封装 gateway 模块生命周期，持有 tcp server、SessionServer、link 槽位和 gateway session 槽位。
-- `GatewayServer` 默认配置文件是 `bin/gate.json`，也可以通过 `--config <path>` 覆盖。
+- `GatewayServer` 默认配置文件是 `bin/gate.json`，服务进程不再接受命令行参数覆盖。
 - 网络 `Loop` 由 `ServiceRuntime` 创建和驱动，`GatewayServer` 只在初始化时把监听 server 挂到该 loop。
 - 进程采用单主循环事件驱动模型，不创建业务线程；需要扩容时优先多开进程实例。
 - `GatewayServer` 把 `TcpServer` 回调接到 `GatewaySession` 和逻辑 `SessionServer`。
@@ -188,7 +187,9 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - TCP 外层仍使用 `engine/base/net` 的 4 字节大端长度头。
 - TCP payload 是固定 `MsgHeader` 加变长 `Body`。`MsgHeader` 的二进制编解码在 `engine/src/common/protocol`。
 - `MsgHeader.msg_id` 是消息 ID，`Body` 是 `share/proto/client/protocol.proto` 中定义的 `PB_<消息ID枚举名>` protobuf 消息。
-- gateway 只解固定头得到 `msg_id` 和 body，再转给 session handler；具体 protobuf 对象由业务 session 自己解析。
+- libevent 收到 TCP payload 后由 gateway 入队，runtime 出队时交给 `GatewayServer::process_message`；
+  `GatewayServer` 找到对应 `GatewaySession`，由 `GatewaySession::handle_packet` 解固定头得到 `msg_id`
+  和 body，再走 session handler；具体 protobuf 对象由业务 session 自己解析。
 
 ## Login 和 GateHub 服务
 
@@ -231,47 +232,16 @@ Docker 包装脚本默认 build 目录为容器本地 `/tmp/abe_engine_build/eng
 截断文件；纯编译脚本 `scripts/build.sh` 和 `scripts/rebuild.sh` 默认 build 目录为 `build/engine`。
 gateway、login、gatehub 可执行文件分别输出到 `bin/abe_gateway`、`bin/abe_login`、`bin/abe_gatehub`；
 配置文件分别默认为 `bin/gate.json`、`bin/login.json`、`bin/gatehub.json`。可以用 `BUILD_DIR`
-覆盖 build 目录，用 `GATEWAY_CONFIG`、`LOGIN_CONFIG`、`GATEHUB_CONFIG` 覆盖配置文件。
+覆盖 build 目录；服务配置文件路径由对应 server 的 `config_path()` 固定提供。
 服务启停脚本只负责启动已经编译好的二进制，不会自动编译代码。默认 pid 写到
 `bin/run/<service>.pid`，stdout/stderr 写到 `bin/logs/<service>/stdout.log`。
 停服脚本只删除 pid 文件，不删除日志。三个服务的默认配置都使用 `log.output=daily`，
 所以业务日志写文件，不会打印到启服终端；实时查看可以直接 tail 日志文件。
 
-gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。命令行只保留公共 runtime 参数，
-用于切换配置文件或临时覆盖日志、数据库、Redis 等公共运行环境。
+gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。公共 runtime、日志、数据库、Redis
+和雪花 ID 设置也只从各服务固定 JSON 的对应字段读取。
 gateway、login 和 gatehub 的 JSON 配置字段都直接通过 `abe_config.h` 的 `abe_config_get_*`
 接口按 path 读取；服务代码不维护自己的配置读取接口。
-
-公共命令行参数：
-
-```text
---config <path>          JSON 配置文件，gateway 默认 bin/gate.json
---tick-ms <ms>           主循环 sleep 毫秒数，默认 10
---timer-max-count <count> 服务时间轮最大 timer 数，默认 65536
---message-tick-hz <hz>   收包消息队列处理频率，默认 30
---message-max-per-tick <count> 每个消息 tick 最多处理收包数，默认 500
---message-queue-capacity <count> 收包消息队列容量，默认 65536
---log-output <mode>      console/file/daily，默认 console；gateway 配置默认为 daily
---log-file <path>        log-output=file 时的日志文件
---log-dir <path>         log-output=daily 时的日志根目录，默认 logs；gateway 配置默认为 bin/logs/gateway
---log-level <level>      trace/debug/info/warn/error/critical/off，默认 info
---mysql-enable <0|1>     启动时是否连接 MySQL，默认 0
---mysql-host <host>      MySQL 地址，默认 127.0.0.1
---mysql-port <port>      MySQL 端口，默认 3306
---mysql-database <name>  MySQL 数据库名，默认服务名
---mysql-user <user>      MySQL 用户
---mysql-password <pwd>   MySQL 密码
---mysql-workers <count>  MySQL 异步工作连接数，默认 4
---mysql-queue-capacity <count> MySQL 最大未完成请求数，默认 4096
---redis-enable <0|1>     启动时是否连接 Redis，默认 0
---redis-host <host>      Redis 地址，默认 127.0.0.1
---redis-port <port>      Redis 端口，默认 6379
---redis-password <pwd>   Redis 密码，默认空
---redis-database <index> Redis database，默认 0
---redis-connect-timeout-ms <ms> Redis 连接超时，默认 1000
---redis-command-timeout-ms <ms> Redis 命令超时，默认 1000
---id-node-id <0-1023>    全区全服唯一的雪花节点号
-```
 
 对应 JSON 配置键：
 

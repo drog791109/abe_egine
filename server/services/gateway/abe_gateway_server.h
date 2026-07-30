@@ -37,6 +37,7 @@ public:
     virtual void defaults();
     virtual int load_config(const abe_config_t* config);
     virtual int init(abe::service::common::Context& context);
+    virtual int process_message(const abe::service::common::Message& message);
     virtual int update(uint64_t now_ms);
     virtual void close(uint64_t now_ms);
 
@@ -73,10 +74,6 @@ private:
     static void tcp_on_disconnect(
         abe::adapter::net::TcpLink* link,
         int error_code,
-        void* user_data);
-
-    static int process_queued_message(
-        const abe::service::common::Message& message,
         void* user_data);
 
     int init_sessions();

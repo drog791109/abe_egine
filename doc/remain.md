@@ -2,8 +2,7 @@
 flowchart TD
     Main[abe_gateway_main.cpp<br/>进程入口] --> Runtime[services/common<br/>ServiceRuntime]
 
-    Runtime --> Args[命令行参数解析]
-    Runtime --> Config[JSON 配置加载]
+    Runtime --> Config[固定 JSON 配置加载]
     Runtime --> Log[日志初始化]
     Runtime --> DB[可选 MySQL 初始化]
     Runtime --> Loop[adapter/net::Loop<br/>libevent 事件循环]
@@ -36,8 +35,10 @@ sequenceDiagram
 
     Client->>TcpServer: packet
     TcpServer->>GatewayServer: on_receive(link, packet)
-    GatewayServer->>GatewayServer: abe_msg_packet_decode()
-    GatewayServer->>GatewaySession: handle_message(msg_id, body)
+    GatewayServer->>Runtime: enqueue message
+    Runtime->>GatewayServer: process_message(message)
+    GatewayServer->>GatewaySession: handle_packet(packet)
+    GatewaySession->>GatewaySession: abe_msg_packet_decode()
     GatewaySession->>LogicSession: Session handler dispatch
 
     LogicSession->>GatewaySession: send(data)

@@ -4,9 +4,9 @@
 namespace service_common = abe::service::common;
 namespace login = abe::service::login;
 
-int main(int argc, char** argv)
+int main()
 {
     login::LoginServer server;
 
-    return service_common::run(argc, argv, server);
+    return service_common::run(server);
 }
