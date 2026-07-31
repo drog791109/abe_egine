@@ -1,6 +1,6 @@
 #include "abe_gateway_session.h"
 #include "abe_protocol.h"
-#include "abe_session_server.h"
+#include "abe_session_manager.h"
 #include "protocol.pb.h"
 
 #include "../../abe_test.h"
@@ -33,7 +33,7 @@ public:
     }
 
 protected:
-    virtual int on_send(const void* data, uint32_t size)
+    virtual int send_packet(const void* data, uint32_t size)
     {
         TEST_REQUIRE(capture != NULL);
         TEST_REQUIRE(data != NULL);
@@ -51,12 +51,12 @@ private:
 
 static int test_gateway_session_handles_ping(void)
 {
-    TestGatewaySession slots[1];
-    session::SessionServer server;
-    session::SessionServerConfig config;
+    session::SessionManager server;
     session::SessionOpenRequest request;
     session::Session* service_session;
-    net::TcpLink link;
+    session::Session* free_session;
+    TestGatewaySession* gateway_session;
+    net::TcpLink* link;
     proto::PB_CS_PING ping;
     proto::PB_SC_PONG response;
     proto::PB_CS_LOGIN_REQ login_request;
@@ -69,31 +69,31 @@ static int test_gateway_session_handles_ping(void)
     int status;
 
     memset(&capture, 0, sizeof(capture));
-    memset(&config, 0, sizeof(config));
-    config.server_id = 1u;
-    config.sessions = slots;
-    config.session_count = 1u;
-    config.session_size = (uint32_t)sizeof(slots[0]);
-    config.idle_timeout_ms = 0u;
-    TEST_REQUIRE(server.init(config) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(server.init<TestGatewaySession>(1u, 1u, 0u) ==
+        proto::ERROR_CODE_OK);
+
+    free_session = server.peek_free_session();
+    TEST_REQUIRE(free_session != NULL);
+    gateway_session = (TestGatewaySession*)free_session;
+    link = gateway_session->tcp_link_slot();
+    TEST_REQUIRE(link != NULL);
 
     memset(&request, 0, sizeof(request));
-    request.link_id = (uint64_t)(uintptr_t)&link;
-    request.conn_id = request.link_id;
+    request.conn_id = (uint64_t)(uintptr_t)link;
     request.now_ms = 100u;
-    request.link_user_data = &link;
+    request.user_data = link;
 
     status = proto::ERROR_CODE_OK;
     service_session = server.open_session(request, &status);
     TEST_REQUIRE(status == proto::ERROR_CODE_OK);
     TEST_REQUIRE(service_session != NULL);
+    gateway_session = (TestGatewaySession*)service_session;
 
-    TEST_REQUIRE(service_session == &slots[0]);
-    TEST_REQUIRE(slots[0].active() == 1);
-    TEST_REQUIRE(slots[0].link() == &link);
-    TEST_REQUIRE(slots[0].link_id() == request.link_id);
-    TEST_REQUIRE((session::Session*)&slots[0] == service_session);
-    slots[0].bind_capture(&capture);
+    TEST_REQUIRE(gateway_session->active());
+    TEST_REQUIRE(gateway_session->link() == link);
+    TEST_REQUIRE(gateway_session->conn_id() == request.conn_id);
+    TEST_REQUIRE((session::Session*)gateway_session == service_session);
+    gateway_session->bind_capture(&capture);
 
     ping.mutable_header()->set_protocol_id(proto::CS_PING);
     ping.set_client_send_time_ms(1234u);
@@ -110,7 +110,7 @@ static int test_gateway_session_handles_ping(void)
         (uint32_t)sizeof(packet),
         &written_size) == ABE_PROTOCOL_OK);
 
-    TEST_REQUIRE(slots[0].handle_packet(packet, written_size, 200u) ==
+    TEST_REQUIRE(gateway_session->handle_packet(packet, written_size, 200u) ==
         proto::ERROR_CODE_OK);
 
     TEST_REQUIRE(capture.count == 1u);
@@ -140,15 +140,16 @@ static int test_gateway_session_handles_ping(void)
         (uint32_t)sizeof(packet),
         &written_size) == ABE_PROTOCOL_OK);
 
-    TEST_REQUIRE(slots[0].handle_packet(packet, written_size, 210u) ==
+    TEST_REQUIRE(gateway_session->handle_packet(packet, written_size, 210u) ==
         proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
     TEST_REQUIRE(capture.count == 0u);
 
-    TEST_REQUIRE(server.close_session(request.link_id, 0u, 300u) ==
+    TEST_REQUIRE(server.close_session(request.conn_id, 0u, 300u) ==
         proto::ERROR_CODE_OK);
-    TEST_REQUIRE(slots[0].active() == 0);
-    TEST_REQUIRE(slots[0].link() == NULL);
-    TEST_REQUIRE(slots[0].link_id() == 0u);
+    TEST_REQUIRE(!gateway_session->active());
+    TEST_REQUIRE(gateway_session->link() == NULL);
+    TEST_REQUIRE(gateway_session->conn_id() == 0u);
+    server.close(301u);
     return ABE_TEST_STATUS_OK;
 }
 

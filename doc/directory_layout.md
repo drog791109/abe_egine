@@ -169,7 +169,7 @@ adapter 公共接口不得暴露 STL 容器、`std::function`、智能指针或�
 | 路径 | 放什么 | 不放什么 | 后续补全方向 |
 | --- | --- | --- | --- |
 | `services/common/` | 各服务进程入口复用的轻量启动组件，例如 `ServiceRuntime`、命令行参数解析、配置/日志/DB 初始化、停止信号处理、统一启动返回码辅助。 | 具体服务的业务生命周期、网络监听对象、玩法规则。 | 保持小而直接，只抽公共启动流程，不做成万能应用框架。 |
-| `services/common/session/` | 服务侧公共 Session 和 SessionServer 生命周期组件。 | Gateway 具体网络连接、登录账号规则、Redis 会话存储策略。 | 只保留连接绑定、状态流转、消息分发表等通用行为。 |
+| `services/common/session/` | 服务侧公共 Session 和 SessionManager 生命周期组件。 | Gateway 具体网络连接、登录账号规则、Redis 会话存储策略。 | 只保留连接绑定、活跃时间、认证标记等通用行为。 |
 | `services/common/store/` | 上层可复用的持久化 repository，例如 `PlayerStore` 和 MySQL 实现。 | engine 公共 DB 契约、具体玩法规则、客户端协议处理。 | 存储实现依赖 `abe_db_t` 和 `share/proto/store`，真实连接由服务装配。 |
 | `services/gateway/` | Gateway 进程入口、监听端口、连接生命周期、协议编解码接入、转发到后端服务。 | 账号登录规则、房间玩法逻辑。 | 装配 `adapters/net`，接入协议层和路由客户端。 |
 | `services/lobby/` | 大厅服务入口、低频玩家请求路由、账户/社交/匹配入口聚合。 | Gateway 长连接实现、Room tick。 | 后续可根据业务规模拆出独立服务。 |

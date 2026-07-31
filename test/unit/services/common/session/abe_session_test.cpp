@@ -1,47 +1,54 @@
-#include "abe_session_server.h"
+#include "abe_session_manager.h"
 
 #include "protocol.pb.h"
 
 #include "../../../abe_test.h"
 
+#include <stdint.h>
 #include <string.h>
 
 namespace session = abe::service::session;
 namespace proto = abe::proto::client;
 
-struct MessageCounter {
-    uint32_t count;
-    uint32_t last_message_id;
-    uint32_t last_size;
-    uint64_t last_link_id;
-};
-
-struct SendCounter {
-    uint32_t count;
-    uint32_t last_size;
-    uint64_t last_link_id;
-};
-
-class TestServerSession : public session::Session {
+class TestSession : public session::Session {
 public:
-    TestServerSession()
-        : open_count(0u),
+    TestSession()
+        : connect_count(0u),
           close_count(0u),
           reset_count(0u),
-          last_link_user_data(NULL)
+          message_count(0u),
+          send_count(0u),
+          frame_count(0u),
+          last_user_data(NULL),
+          last_message_size(0u),
+          last_send_size(0u),
+          last_delta_ms(0u),
+          fail_connect(false),
+          fail_send(false)
     {
     }
 
-    uint32_t open_count;
+    uint32_t connect_count;
     uint32_t close_count;
     uint32_t reset_count;
-    void* last_link_user_data;
+    uint32_t message_count;
+    uint32_t send_count;
+    uint32_t frame_count;
+    void* last_user_data;
+    uint32_t last_message_size;
+    uint32_t last_send_size;
+    uint64_t last_delta_ms;
+    bool fail_connect;
+    bool fail_send;
 
 protected:
-    virtual int on_open(const session::SessionOpenRequest& request)
+    virtual int on_connect(const session::SessionOpenRequest& request)
     {
-        ++open_count;
-        last_link_user_data = request.link_user_data;
+        ++connect_count;
+        last_user_data = request.user_data;
+        if (fail_connect) {
+            return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+        }
         return proto::ERROR_CODE_OK;
     }
 
@@ -55,141 +62,172 @@ protected:
     virtual void on_reset()
     {
         ++reset_count;
-        last_link_user_data = NULL;
+        last_user_data = NULL;
     }
-};
 
-class TestHandlerSession : public session::Session {
-public:
-    void bind(session::SessionHandlerTable* table)
+    virtual int on_message(const void* data, uint32_t size, uint64_t now_ms)
     {
-        set_handler_table(table);
+        (void)data;
+        (void)now_ms;
+        ++message_count;
+        last_message_size = size;
+        return proto::ERROR_CODE_OK;
+    }
+
+    virtual int send_packet(const void* data, uint32_t size)
+    {
+        (void)data;
+        if (fail_send) {
+            return proto::ERROR_CODE_COMMON_PROTOCOL_ERROR;
+        }
+        ++send_count;
+        last_send_size = size;
+        return proto::ERROR_CODE_OK;
+    }
+
+    virtual void on_frame_update(uint64_t delta_ms)
+    {
+        ++frame_count;
+        last_delta_ms = delta_ms;
     }
 };
 
-static session::SessionOpenRequest make_open_request(uint64_t link_id, uint64_t conn_id, uint64_t now_ms)
+static session::SessionOpenRequest make_open_request(uint64_t conn_id, uint64_t now_ms)
 {
     session::SessionOpenRequest request;
 
-    request.link_id = link_id;
     request.conn_id = conn_id;
     request.now_ms = now_ms;
-    request.link_user_data = NULL;
+    request.user_data = NULL;
     return request;
 }
 
-static int count_message(
-    session::Session* current,
-    const session::SessionMessage* message,
-    void* user_data)
+static int test_session_lifecycle(void)
 {
-    MessageCounter* counter;
-
-    counter = (MessageCounter*)user_data;
-    TEST_REQUIRE(current != NULL);
-    TEST_REQUIRE(message != NULL);
-    TEST_REQUIRE(counter != NULL);
-
-    ++counter->count;
-    counter->last_message_id = message->message_id;
-    counter->last_size = message->size;
-    counter->last_link_id = current->link_id();
-    return proto::ERROR_CODE_OK;
-}
-
-static int count_send(
-    session::Session* current,
-    const void* data,
-    uint32_t size,
-    void* user_data)
-{
-    SendCounter* counter;
-
-    (void)data;
-    counter = (SendCounter*)user_data;
-    TEST_REQUIRE(current != NULL);
-    TEST_REQUIRE(counter != NULL);
-
-    ++counter->count;
-    counter->last_size = size;
-    counter->last_link_id = current->link_id();
-    return proto::ERROR_CODE_OK;
-}
-
-static int test_server_accepts_derived_sessions(void)
-{
-    TestServerSession slots[2];
-    session::SessionServer server;
-    session::SessionServerConfig config;
+    TestSession current;
     session::SessionOpenRequest request;
-    session::Session* current;
-    int link_user_data;
-    int status;
+    int user_data;
+    const char payload[] = "abc";
 
-    memset(&config, 0, sizeof(config));
-    config.server_id = 8u;
-    config.sessions = slots;
-    config.session_count = 2u;
-    config.session_size = (uint32_t)sizeof(slots[0]);
-    config.idle_timeout_ms = 0u;
+    request = make_open_request(1001u, 100u);
+    request.user_data = &user_data;
 
-    TEST_REQUIRE(server.init(config) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(slots[0].reset_count == 1u);
-    TEST_REQUIRE(slots[1].reset_count == 1u);
+    TEST_REQUIRE(current.open(7u, request) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(current.active());
+    TEST_REQUIRE(current.server_id() == 7u);
+    TEST_REQUIRE(current.conn_id() == 1001u);
+    TEST_REQUIRE(current.last_active_ms() == 100u);
+    TEST_REQUIRE(current.user_data() == &user_data);
+    TEST_REQUIRE(current.connect_count == 1u);
+    TEST_REQUIRE(current.last_user_data == &user_data);
 
-    request = make_open_request(901u, 11u, 100u);
-    request.link_user_data = &link_user_data;
-    current = server.open_session(request, &status);
-    TEST_REQUIRE(status == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(current == &slots[0]);
-    TEST_REQUIRE(slots[0].open_count == 1u);
-    TEST_REQUIRE(slots[0].last_link_user_data == &link_user_data);
-    TEST_REQUIRE(server.find_session(901u) == &slots[0]);
+    TEST_REQUIRE(current.receive(payload, 3u, 150u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(current.message_count == 1u);
+    TEST_REQUIRE(current.last_message_size == 3u);
+    TEST_REQUIRE(current.last_active_ms() == 150u);
 
-    TEST_REQUIRE(server.close_session(901u, 3u, 200u) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(slots[0].close_count == 1u);
-    TEST_REQUIRE(slots[0].reset_count == 3u);
-    TEST_REQUIRE(slots[0].last_link_user_data == NULL);
+    TEST_REQUIRE(current.send(payload, 3u, 160u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(current.send_count == 1u);
+    TEST_REQUIRE(current.last_send_size == 3u);
+    TEST_REQUIRE(current.last_active_ms() == 160u);
+
+    TEST_REQUIRE(current.mark_authenticated(9001u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(current.authenticated());
+    TEST_REQUIRE(current.user_id() == 9001u);
+    current.clear_authenticated();
+    TEST_REQUIRE(!current.authenticated());
+    TEST_REQUIRE(current.user_id() == 0u);
+
+    ((session::Session*)&current)->on_frame_update(16u);
+    TEST_REQUIRE(current.frame_count == 1u);
+    TEST_REQUIRE(current.last_delta_ms == 16u);
+
+    TEST_REQUIRE(!current.is_timeout(260u, 100u));
+    TEST_REQUIRE(current.is_timeout(261u, 100u));
+
+    current.close(3u, 300u);
+    TEST_REQUIRE(!current.active());
+    TEST_REQUIRE(current.close_reason() == 3u);
+    TEST_REQUIRE(current.close_count == 1u);
+    TEST_REQUIRE(current.last_active_ms() == 300u);
+
+    current.reset();
+    TEST_REQUIRE(current.conn_id() == 0u);
+    TEST_REQUIRE(current.user_data() == NULL);
+    TEST_REQUIRE(current.reset_count >= 1u);
     return ABE_TEST_STATUS_OK;
 }
 
-static int test_server_owns_link_sessions(void)
+static int test_session_rejects_invalid_access(void)
 {
-    session::Session slots[2];
-    session::SessionServer server;
-    session::SessionServerConfig config;
-    session::Session* first;
-    session::Session* second;
+    TestSession current;
+    const char payload[] = "abc";
+
+    TEST_REQUIRE(current.open(0u, make_open_request(1001u, 100u)) ==
+        proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
+    TEST_REQUIRE(current.open(7u, make_open_request(0u, 100u)) ==
+        proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
+
+    current.fail_connect = true;
+    TEST_REQUIRE(current.open(7u, make_open_request(1001u, 100u)) ==
+        proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
+    TEST_REQUIRE(!current.active());
+
+    current.fail_connect = false;
+    TEST_REQUIRE(current.open(7u, make_open_request(1001u, 100u)) ==
+        proto::ERROR_CODE_OK);
+    TEST_REQUIRE(current.receive(NULL, 3u, 110u) ==
+        proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
+    TEST_REQUIRE(current.send(NULL, 3u, 110u) ==
+        proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
+    TEST_REQUIRE(current.mark_authenticated(0u) ==
+        proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
+
+    current.fail_send = true;
+    TEST_REQUIRE(current.send(payload, 3u, 120u) ==
+        proto::ERROR_CODE_COMMON_PROTOCOL_ERROR);
+    TEST_REQUIRE(current.last_active_ms() == 100u);
+
+    current.close(0u, 130u);
+    TEST_REQUIRE(current.receive(payload, 3u, 140u) ==
+        proto::ERROR_CODE_SESSION_CLOSED);
+    TEST_REQUIRE(current.send(payload, 3u, 140u) ==
+        proto::ERROR_CODE_SESSION_CLOSED);
+    TEST_REQUIRE(current.mark_authenticated(1u) ==
+        proto::ERROR_CODE_SESSION_CLOSED);
+    return ABE_TEST_STATUS_OK;
+}
+
+static int test_server_owns_session_slots(void)
+{
+    session::SessionManager server;
+    TestSession* first;
+    TestSession* second;
     int status;
 
-    memset(&config, 0, sizeof(config));
-    config.server_id = 9u;
-    config.sessions = slots;
-    config.session_count = 2u;
-    config.idle_timeout_ms = 0u;
-
-    TEST_REQUIRE(server.init(config) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(server.init<TestSession>(9u, 2u, 0u) == proto::ERROR_CODE_OK);
     TEST_REQUIRE(server.capacity() == 2u);
     TEST_REQUIRE(server.active_count() == 0u);
 
-    first = server.open_session(make_open_request(1001u, 1u, 100u), &status);
+    first = (TestSession*)server.open_session(make_open_request(1001u, 100u), &status);
     TEST_REQUIRE(status == proto::ERROR_CODE_OK);
     TEST_REQUIRE(first != NULL);
-    TEST_REQUIRE(first->link_id() == 1001u);
+    TEST_REQUIRE(first->conn_id() == 1001u);
     TEST_REQUIRE(first->server_id() == 9u);
-    TEST_REQUIRE(first->state() == session::SESSION_STATE_CONNECTED);
+    TEST_REQUIRE(first->reset_count == 2u);
     TEST_REQUIRE(server.active_count() == 1u);
 
-    TEST_REQUIRE(server.open_session(make_open_request(1001u, 2u, 101u), &status) == NULL);
+    TEST_REQUIRE(server.open_session(make_open_request(1001u, 101u), &status) == NULL);
     TEST_REQUIRE(status == proto::ERROR_CODE_SESSION_ALREADY_EXISTS);
     TEST_REQUIRE(server.active_count() == 1u);
 
-    second = server.open_session(make_open_request(1002u, 2u, 102u), &status);
+    second = (TestSession*)server.open_session(make_open_request(1002u, 102u), &status);
     TEST_REQUIRE(status == proto::ERROR_CODE_OK);
     TEST_REQUIRE(second != NULL);
+    TEST_REQUIRE(second != first);
     TEST_REQUIRE(server.active_count() == 2u);
 
-    TEST_REQUIRE(server.open_session(make_open_request(1003u, 3u, 103u), &status) == NULL);
+    TEST_REQUIRE(server.open_session(make_open_request(1003u, 103u), &status) == NULL);
     TEST_REQUIRE(status == proto::ERROR_CODE_SESSION_NO_SLOT);
     TEST_REQUIRE(server.find_session(1001u) == first);
     TEST_REQUIRE(server.find_session(1002u) == second);
@@ -197,221 +235,75 @@ static int test_server_owns_link_sessions(void)
     TEST_REQUIRE(server.close_session(1001u, 7u, 200u) == proto::ERROR_CODE_OK);
     TEST_REQUIRE(server.active_count() == 1u);
     TEST_REQUIRE(server.find_session(1001u) == NULL);
+    TEST_REQUIRE(first->close_count == 1u);
 
-    first = server.open_session(make_open_request(1003u, 3u, 201u), &status);
+    first = (TestSession*)server.open_session(make_open_request(1003u, 201u), &status);
     TEST_REQUIRE(status == proto::ERROR_CODE_OK);
     TEST_REQUIRE(first != NULL);
-    TEST_REQUIRE(first->link_id() == 1003u);
+    TEST_REQUIRE(first->conn_id() == 1003u);
     TEST_REQUIRE(server.active_count() == 2u);
+    server.close(202u);
+    TEST_REQUIRE(server.initialized() == 0);
     return ABE_TEST_STATUS_OK;
 }
 
-static int test_session_message_handlers(void)
+static int test_server_message_auth_and_timeout(void)
 {
-    TestHandlerSession slots[1];
-    session::SessionServer server;
-    session::SessionServerConfig config;
-    session::Session* current;
-    TestHandlerSession* handler_session;
-    session::SessionHandlerTable handlers;
-    session::SessionHandlerEntry handler_slots[session::SESSION_MAX_MESSAGE_ID + 1u];
-    MessageCounter move_counter;
-    MessageCounter default_counter;
-    SendCounter send_counter;
-    const char payload[] = "abc";
-    int status;
-
-    session::Session::init_handler_table(
-        &handlers,
-        handler_slots,
-        session::SESSION_MAX_MESSAGE_ID + 1u);
-
-    memset(&move_counter, 0, sizeof(move_counter));
-    memset(&default_counter, 0, sizeof(default_counter));
-    memset(&send_counter, 0, sizeof(send_counter));
-    memset(&config, 0, sizeof(config));
-
-    config.server_id = 10u;
-    config.sessions = slots;
-    config.session_count = 1u;
-    config.session_size = (uint32_t)sizeof(slots[0]);
-    config.idle_timeout_ms = 0u;
-
-    TEST_REQUIRE(server.init(config) == proto::ERROR_CODE_OK);
-    current = server.open_session(make_open_request(2001u, 1u, 1000u), &status);
-    TEST_REQUIRE(status == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(current != NULL);
-    handler_session = (TestHandlerSession*)current;
-    handler_session->bind(&handlers);
-
-    TEST_REQUIRE(session::Session::set_message_handler(&handlers, 3001u, count_message, &move_counter) ==
-        proto::ERROR_CODE_OK);
-    TEST_REQUIRE(session::Session::set_default_message_handler(
-        &handlers,
-        count_message,
-        &default_counter) ==
-        proto::ERROR_CODE_OK);
-
-    TEST_REQUIRE(server.handle_message(2001u, 3001u, payload, 3u, 1100u) ==
-        proto::ERROR_CODE_OK);
-    TEST_REQUIRE(move_counter.count == 1u);
-    TEST_REQUIRE(move_counter.last_message_id == 3001u);
-    TEST_REQUIRE(move_counter.last_size == 3u);
-    TEST_REQUIRE(move_counter.last_link_id == 2001u);
-    TEST_REQUIRE(current->last_recv_ms() == 1100u);
-
-    TEST_REQUIRE(server.handle_message(2001u, 3999u, NULL, 0u, 1200u) ==
-        proto::ERROR_CODE_OK);
-    TEST_REQUIRE(default_counter.count == 1u);
-    TEST_REQUIRE(default_counter.last_message_id == 3999u);
-    TEST_REQUIRE(current->last_recv_ms() == 1200u);
-
-    TEST_REQUIRE(session::Session::clear_message_handler(&handlers, 3001u) ==
-        proto::ERROR_CODE_OK);
-    TEST_REQUIRE(server.handle_message(2001u, 3001u, NULL, 0u, 1300u) ==
-        proto::ERROR_CODE_OK);
-    TEST_REQUIRE(default_counter.count == 2u);
-
-    session::Session::clear_default_message_handler(&handlers);
-    TEST_REQUIRE(server.handle_message(2001u, 3999u, NULL, 0u, 1400u) ==
-        proto::ERROR_CODE_SESSION_NO_HANDLER);
-
-    current->set_send_handler(count_send, &send_counter);
-    TEST_REQUIRE(current->send(payload, 3u, 1500u) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(send_counter.count == 1u);
-    TEST_REQUIRE(send_counter.last_size == 3u);
-    TEST_REQUIRE(send_counter.last_link_id == 2001u);
-    TEST_REQUIRE(current->last_send_ms() == 1500u);
-    return ABE_TEST_STATUS_OK;
-}
-
-static int test_session_handlers_are_bound_by_session_type(void)
-{
-    TestHandlerSession first;
-    TestHandlerSession second;
-    session::SessionOpenRequest first_request;
-    session::SessionOpenRequest second_request;
-    session::SessionHandlerTable handlers;
-    session::SessionHandlerEntry handler_slots[session::SESSION_MAX_MESSAGE_ID + 1u];
-    MessageCounter first_counter;
-    MessageCounter shared_counter;
-
-    memset(&first_counter, 0, sizeof(first_counter));
-    memset(&shared_counter, 0, sizeof(shared_counter));
-    session::Session::init_handler_table(
-        &handlers,
-        handler_slots,
-        session::SESSION_MAX_MESSAGE_ID + 1u);
-
-    first_request = make_open_request(4001u, 1u, 1000u);
-    second_request = make_open_request(4002u, 2u, 1000u);
-    TEST_REQUIRE(first.open(12u, first_request) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(second.open(12u, second_request) == proto::ERROR_CODE_OK);
-    first.bind(&handlers);
-    second.bind(&handlers);
-
-    TEST_REQUIRE(session::Session::set_message_handler(&handlers, 3001u, count_message, &first_counter) ==
-        proto::ERROR_CODE_OK);
-    TEST_REQUIRE(session::Session::set_message_handler(
-        &handlers,
-        session::SESSION_MAX_MESSAGE_ID + 1u,
-        count_message,
-        &first_counter) == proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
-    TEST_REQUIRE(first.handle_message(3001u, NULL, 0u, 1100u) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(second.handle_message(3001u, NULL, 0u, 1200u) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(first_counter.count == 2u);
-    TEST_REQUIRE(first_counter.last_link_id == 4002u);
-
-    TEST_REQUIRE(session::Session::set_message_handler(&handlers, 3001u, count_message, &shared_counter) ==
-        proto::ERROR_CODE_OK);
-    TEST_REQUIRE(first.handle_message(3001u, NULL, 0u, 1300u) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(first_counter.count == 2u);
-    TEST_REQUIRE(shared_counter.count == 1u);
-    TEST_REQUIRE(shared_counter.last_link_id == 4001u);
-
-    TEST_REQUIRE(session::Session::clear_message_handler(&handlers, 3001u) ==
-        proto::ERROR_CODE_OK);
-    TEST_REQUIRE(second.handle_message(3001u, NULL, 0u, 1400u) ==
-        proto::ERROR_CODE_SESSION_NO_HANDLER);
-    TEST_REQUIRE(second.handle_message(
-        session::SESSION_MAX_MESSAGE_ID + 1u,
-        NULL,
-        0u,
-        1450u) == proto::ERROR_CODE_COMMON_INVALID_ARGUMENT);
-
-    first.close(0u, 1500u);
-    second.close(0u, 1500u);
-    return ABE_TEST_STATUS_OK;
-}
-
-static int test_session_state_and_idle_update(void)
-{
-    session::Session slots[2];
-    session::SessionServer server;
-    session::SessionServerConfig config;
-    session::Session* current;
+    session::SessionManager server;
+    TestSession* current;
     uint32_t closed_count;
     int status;
 
-    memset(&config, 0, sizeof(config));
-    config.server_id = 11u;
-    config.sessions = slots;
-    config.session_count = 2u;
-    config.idle_timeout_ms = 100u;
-
-    TEST_REQUIRE(server.init(config) == proto::ERROR_CODE_OK);
-    current = server.open_session(make_open_request(3001u, 1u, 1000u), &status);
+    TEST_REQUIRE(server.init<TestSession>(11u, 2u, 100u) == proto::ERROR_CODE_OK);
+    current = (TestSession*)server.open_session(make_open_request(3001u, 1000u), &status);
     TEST_REQUIRE(status == proto::ERROR_CODE_OK);
     TEST_REQUIRE(current != NULL);
 
-    TEST_REQUIRE(current->set_uid(8001u) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(current->state() == session::SESSION_STATE_AUTHENTICATED);
-    TEST_REQUIRE(server.find_session_by_uid(8001u) == current);
+    TEST_REQUIRE(server.handle_message(3001u, NULL, 0u, 1050u) ==
+        proto::ERROR_CODE_OK);
+    TEST_REQUIRE(current->message_count == 1u);
+    TEST_REQUIRE(current->last_active_ms() == 1050u);
 
-    TEST_REQUIRE(current->enter_room(9001u) == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(current->state() == session::SESSION_STATE_IN_ROOM);
-    TEST_REQUIRE(current->enter_game() == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(current->state() == session::SESSION_STATE_IN_GAME);
-    TEST_REQUIRE(current->leave_game() == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(current->state() == session::SESSION_STATE_IN_ROOM);
-    TEST_REQUIRE(current->leave_room() == proto::ERROR_CODE_OK);
-    TEST_REQUIRE(current->state() == session::SESSION_STATE_AUTHENTICATED);
+    TEST_REQUIRE(current->mark_authenticated(8001u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(current->authenticated());
+    TEST_REQUIRE(server.find_session_by_user_id(8001u) == current);
+    TEST_REQUIRE(current->mark_authenticated(8002u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(server.find_session_by_user_id(8001u) == NULL);
+    TEST_REQUIRE(server.find_session_by_user_id(8002u) == current);
 
     closed_count = 999u;
-    TEST_REQUIRE(server.update(1099u, &closed_count) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(server.update(1150u, &closed_count) == proto::ERROR_CODE_OK);
     TEST_REQUIRE(closed_count == 0u);
     TEST_REQUIRE(server.active_count() == 1u);
-    TEST_REQUIRE(server.update(1101u, &closed_count) == proto::ERROR_CODE_OK);
+
+    TEST_REQUIRE(server.update(1151u, &closed_count) == proto::ERROR_CODE_OK);
     TEST_REQUIRE(closed_count == 1u);
     TEST_REQUIRE(server.active_count() == 0u);
-    TEST_REQUIRE(server.find_session_by_uid(8001u) == NULL);
+    TEST_REQUIRE(server.find_session_by_user_id(8002u) == NULL);
 
-    current = server.open_session(make_open_request(3002u, 2u, 1200u), &status);
+    current = (TestSession*)server.open_session(make_open_request(3002u, 1200u), &status);
     TEST_REQUIRE(status == proto::ERROR_CODE_OK);
     TEST_REQUIRE(current != NULL);
     server.close(1300u);
     TEST_REQUIRE(server.initialized() == 0);
     TEST_REQUIRE(server.active_count() == 0u);
-    TEST_REQUIRE(server.open_session(make_open_request(3003u, 3u, 1301u), &status) == NULL);
+    TEST_REQUIRE(server.open_session(make_open_request(3003u, 1301u), &status) == NULL);
     TEST_REQUIRE(status == proto::ERROR_CODE_SESSION_CLOSED);
     return ABE_TEST_STATUS_OK;
 }
 
 int main()
 {
-    if (test_server_accepts_derived_sessions() != ABE_TEST_STATUS_OK) {
+    if (test_session_lifecycle() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
-    if (test_server_owns_link_sessions() != ABE_TEST_STATUS_OK) {
+    if (test_session_rejects_invalid_access() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
-    if (test_session_message_handlers() != ABE_TEST_STATUS_OK) {
+    if (test_server_owns_session_slots() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
-    if (test_session_handlers_are_bound_by_session_type() != ABE_TEST_STATUS_OK) {
-        return ABE_TEST_STATUS_FAILED;
-    }
-    if (test_session_state_and_idle_update() != ABE_TEST_STATUS_OK) {
+    if (test_server_message_auth_and_timeout() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     return ABE_TEST_STATUS_OK;

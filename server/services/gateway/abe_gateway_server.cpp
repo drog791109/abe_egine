@@ -4,6 +4,7 @@
 #include "abe_time.h"
 #include "protocol.pb.h"
 
+#include <limits.h>
 #include <string.h>
 
 namespace abe {
@@ -14,6 +15,7 @@ namespace proto = ::abe::proto::client;
 
 enum {
     ABE_GATEWAY_DEFAULT_PORT = 7000u,
+    ABE_GATEWAY_DEFAULT_MAX_CLIENTS = 1024u,
     ABE_GATEWAY_DEFAULT_BACKLOG = 128u,
     ABE_GATEWAY_DEFAULT_IDLE_TIMEOUT_MS = 60000u,
     ABE_GATEWAY_DEFAULT_SERVER_ID = 1u
@@ -27,7 +29,7 @@ void set_gateway_defaults(GatewayServerConfig* config)
 
     config->host = "0.0.0.0";
     config->port = ABE_GATEWAY_DEFAULT_PORT;
-    config->max_clients = ABE_GATEWAY_MAX_CLIENTS;
+    config->max_clients = ABE_GATEWAY_DEFAULT_MAX_CLIENTS;
     config->backlog = ABE_GATEWAY_DEFAULT_BACKLOG;
     config->max_packet_size = 0u;
     config->server_id = ABE_GATEWAY_DEFAULT_SERVER_ID;
@@ -40,6 +42,11 @@ GatewayServer::GatewayServer()
       tcp_ready_(0)
 {
     set_gateway_defaults(&config_);
+}
+
+GatewayServer::~GatewayServer()
+{
+    close(abe_time_mono_ms());
 }
 
 const char* GatewayServer::name() const
@@ -86,7 +93,7 @@ int GatewayServer::load_config(const abe_config_t* config)
     }
 
     rc = abe_config_get_u64(config, "gateway.max_clients", &value);
-    if (rc == ABE_CONFIG_OK && value >= 1u && value <= ABE_GATEWAY_MAX_CLIENTS) {
+    if (rc == ABE_CONFIG_OK && value >= 1u && value <= UINT32_MAX) {
         config_.max_clients = (uint32_t)value;
     } else if (rc != ABE_CONFIG_NOT_FOUND) {
         ABE_LOG_ERROR("invalid gateway config path=gateway.max_clients status=%s",
@@ -141,7 +148,6 @@ int GatewayServer::init(abe::service::common::Context& context)
         context.message_queue == NULL ||
         config_.host == NULL ||
         config_.max_clients == 0u ||
-        config_.max_clients > ABE_GATEWAY_MAX_CLIENTS ||
         config_.backlog == 0u ||
         config_.backlog > 65535u ||
         config_.max_packet_size > 16777216u ||
@@ -150,6 +156,8 @@ int GatewayServer::init(abe::service::common::Context& context)
         config_.port > 65535u) {
         return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
+
+    close(abe_time_mono_ms());
 
     message_queue_ = context.message_queue;
 
@@ -267,12 +275,12 @@ int GatewayServer::on_disconnect(
     return close_session_for_link(link, (uint32_t)error_code, now_ms);
 }
 
-abe::service::session::SessionServer* GatewayServer::session_server()
+abe::service::session::SessionManager* GatewayServer::session_manager()
 {
     return &sessions_;
 }
 
-const abe::service::session::SessionServer* GatewayServer::session_server() const
+const abe::service::session::SessionManager* GatewayServer::session_manager() const
 {
     return &sessions_;
 }
@@ -294,6 +302,20 @@ void GatewayServer::tcp_on_connect(
     if (gateway != NULL) {
         (void)gateway->on_connect(link, abe_time_mono_ms());
     }
+}
+
+abe::adapter::net::TcpLink* GatewayServer::tcp_acquire_link(
+    abe::adapter::net::TcpServer* server,
+    void* user_data)
+{
+    GatewayServer* gateway;
+
+    (void)server;
+    gateway = (GatewayServer*)user_data;
+    if (gateway == NULL) {
+        return NULL;
+    }
+    return gateway->acquire_link_slot();
 }
 
 void GatewayServer::tcp_on_receive(
@@ -325,19 +347,17 @@ void GatewayServer::tcp_on_disconnect(
 
 int GatewayServer::init_sessions()
 {
-    abe::service::session::SessionServerConfig session_config;
     int rc;
 
-    memset(&session_config, 0, sizeof(session_config));
-    session_config.server_id = config_.server_id;
-    session_config.sessions = session_slots_;
-    session_config.session_count = config_.max_clients;
-    session_config.session_size = (uint32_t)sizeof(session_slots_[0]);
-    session_config.idle_timeout_ms = config_.idle_timeout_ms;
-
-    rc = sessions_.init(session_config);
+    rc = sessions_.init<GatewaySession>(
+        config_.server_id,
+        config_.max_clients,
+        config_.idle_timeout_ms);
     if (rc != proto::ERROR_CODE_OK) {
         ABE_LOG_ERROR("gateway session init failed rc=%d", rc);
+        if (rc == proto::ERROR_CODE_COMMON_INVALID_ARGUMENT) {
+            return abe::service::common::SERVICE_STATUS_INVALID_ARG;
+        }
         return abe::service::common::SERVICE_STATUS_FAILED;
     }
     session_ready_ = 1;
@@ -351,6 +371,7 @@ int GatewayServer::listen(abe::adapter::net::Loop* loop)
     int rc;
 
     memset(&callbacks, 0, sizeof(callbacks));
+    callbacks.acquire_link = GatewayServer::tcp_acquire_link;
     callbacks.on_connect = GatewayServer::tcp_on_connect;
     callbacks.on_receive = GatewayServer::tcp_on_receive;
     callbacks.on_disconnect = GatewayServer::tcp_on_disconnect;
@@ -361,7 +382,7 @@ int GatewayServer::listen(abe::adapter::net::Loop* loop)
     tcp_config.port = (uint16_t)config_.port;
     tcp_config.max_packet_size = config_.max_packet_size;
     tcp_config.backlog = (int)config_.backlog;
-    tcp_config.links = link_slots_;
+    tcp_config.links = NULL;
     tcp_config.link_count = config_.max_clients;
     tcp_config.callbacks = callbacks;
 
@@ -390,10 +411,9 @@ int GatewayServer::open_session_for_link(
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
-    request.link_id = link_id(link);
-    request.conn_id = request.link_id;
+    request.conn_id = link_id(link);
     request.now_ms = now_ms;
-    request.link_user_data = link;
+    request.user_data = link;
 
     session = sessions_.open_session(request, &status);
     if (session == NULL || status != proto::ERROR_CODE_OK) {
@@ -403,7 +423,7 @@ int GatewayServer::open_session_for_link(
 
     gateway_session = (GatewaySession*)session;
     if (!gateway_session->active() || gateway_session->link() != link) {
-        sessions_.close_session(request.link_id, 0u, now_ms);
+        sessions_.close_session(request.conn_id, 0u, now_ms);
         link->disconnect();
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
@@ -435,7 +455,7 @@ int GatewayServer::dispatch(
     }
 
     id = link_id(link);
-    session = find_session(id);
+    session = (GatewaySession*)sessions_.find_session(id);
     if (session == NULL) {
         return proto::ERROR_CODE_SESSION_NOT_FOUND;
     }
@@ -443,28 +463,27 @@ int GatewayServer::dispatch(
     return session->handle_packet(packet, packet_size, now_ms);
 }
 
-uint64_t GatewayServer::link_id(abe::adapter::net::TcpLink* link) const
+abe::adapter::net::TcpLink* GatewayServer::acquire_link_slot()
 {
-    return (uint64_t)(uintptr_t)link;
-}
+    abe::service::session::Session* session;
+    GatewaySession* gateway_session;
 
-GatewaySession* GatewayServer::find_session(uint64_t link_id)
-{
-    uint32_t index;
-
-    if (link_id == 0u) {
+    if (!session_ready_) {
         return NULL;
     }
 
-    index = 0u;
-    while (index < config_.max_clients) {
-        if (session_slots_[index].active() &&
-            session_slots_[index].link_id() == link_id) {
-            return &session_slots_[index];
-        }
-        ++index;
+    session = sessions_.peek_free_session();
+    if (session == NULL) {
+        return NULL;
     }
-    return NULL;
+
+    gateway_session = (GatewaySession*)session;
+    return gateway_session->tcp_link_slot();
+}
+
+uint64_t GatewayServer::link_id(abe::adapter::net::TcpLink* link) const
+{
+    return (uint64_t)(uintptr_t)link;
 }
 
 } /* namespace gateway */

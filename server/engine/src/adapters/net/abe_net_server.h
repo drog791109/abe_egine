@@ -17,12 +17,17 @@ typedef void (*ServerLinkCallback)(
     TcpLink* link,
     void* user_data);
 
+typedef TcpLink* (*ServerAcquireLinkCallback)(
+    TcpServer* server,
+    void* user_data);
+
 typedef void (*ClientLinkCallback)(
     TcpClient* client,
     TcpLink* link,
     void* user_data);
 
 struct TcpServerCallbacks {
+    ServerAcquireLinkCallback acquire_link;
     ServerLinkCallback on_connect;
     TcpReceiveCallback on_receive;
     TcpDisconnectCallback on_disconnect;
@@ -34,6 +39,10 @@ struct TcpServerConfig {
     uint16_t port;
     uint32_t max_packet_size;
     int backlog;
+    /*
+     * links may be NULL when callbacks.acquire_link supplies slots.
+     * link_count is still the maximum accepted connection count.
+     */
     TcpLink* links;
     uint32_t link_count;
     TcpServerCallbacks callbacks;
@@ -62,8 +71,9 @@ public:
     ~TcpServer();
 
     /*
-     * TcpServer owns one listener and uses caller-provided TcpLink storage
-     * for accepted connections. The link storage must outlive close().
+     * TcpServer owns one listener and uses caller-provided TcpLink slots for
+     * accepted connections. Slots may come from config.links or from
+     * callbacks.acquire_link. The slots must outlive close().
      */
     int init(Loop* loop, const TcpServerConfig* config);
     int update();
@@ -100,6 +110,7 @@ private:
     TcpListener listener_;
     TcpLink* links_;
     uint32_t link_count_;
+    uint32_t active_count_;
     uint32_t max_packet_size_;
     TcpServerCallbacks callbacks_;
 };

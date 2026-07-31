@@ -4,17 +4,13 @@
 #include "abe_gateway_session.h"
 #include "abe_net_server.h"
 #include "abe_service_runtime.h"
-#include "abe_session_server.h"
+#include "abe_session_manager.h"
 
 #include <stdint.h>
 
 namespace abe {
 namespace service {
 namespace gateway {
-
-enum {
-    ABE_GATEWAY_MAX_CLIENTS = 1024u
-};
 
 struct GatewayServerConfig {
     const char* host;
@@ -31,6 +27,7 @@ void set_gateway_defaults(GatewayServerConfig* config);
 class GatewayServer : public abe::service::common::Service {
 public:
     GatewayServer();
+    virtual ~GatewayServer();
 
     virtual const char* name() const;
     virtual const char* config_path() const;
@@ -52,8 +49,8 @@ public:
         int error_code,
         uint64_t now_ms);
 
-    abe::service::session::SessionServer* session_server();
-    const abe::service::session::SessionServer* session_server() const;
+    abe::service::session::SessionManager* session_manager();
+    const abe::service::session::SessionManager* session_manager() const;
     int initialized() const;
 
 private:
@@ -63,6 +60,10 @@ private:
     static void tcp_on_connect(
         abe::adapter::net::TcpServer* server,
         abe::adapter::net::TcpLink* link,
+        void* user_data);
+
+    static abe::adapter::net::TcpLink* tcp_acquire_link(
+        abe::adapter::net::TcpServer* server,
         void* user_data);
 
     static void tcp_on_receive(
@@ -90,15 +91,13 @@ private:
         uint32_t packet_size,
         uint64_t now_ms);
 
+    abe::adapter::net::TcpLink* acquire_link_slot();
     uint64_t link_id(abe::adapter::net::TcpLink* link) const;
-    GatewaySession* find_session(uint64_t link_id);
 
     GatewayServerConfig config_;
     abe::service::common::MessageQueue* message_queue_;
     abe::adapter::net::TcpServer tcp_;
-    abe::service::session::SessionServer sessions_;
-    GatewaySession session_slots_[ABE_GATEWAY_MAX_CLIENTS];
-    abe::adapter::net::TcpLink link_slots_[ABE_GATEWAY_MAX_CLIENTS];
+    abe::service::session::SessionManager sessions_;
     int session_ready_;
     int tcp_ready_;
 };

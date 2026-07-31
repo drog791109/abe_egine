@@ -49,8 +49,8 @@ static int protocol_status_to_session_status(int status)
 }
 
 static int send_proto_message(
-    service_session::Session* session,
-    const service_session::SessionMessage& message,
+    GatewaySession* session,
+    uint64_t recv_time_ms,
     uint32_t response_id,
     const google::protobuf::MessageLite& response)
 {
@@ -70,8 +70,8 @@ static int send_proto_message(
 
     abe_msg_header_init(&header);
     header.msg_id = response_id;
-    header.session_id = session->link_id();
-    header.timestamp = message.recv_time_ms;
+    header.session_id = session->conn_id();
+    header.timestamp = recv_time_ms;
 
     rc = abe_msg_packet_get_size((uint32_t)body.size(), &packet_size);
     if (rc != ABE_PROTOCOL_OK) {
@@ -92,7 +92,7 @@ static int send_proto_message(
         packet_size,
         &written_size);
     if (rc == ABE_PROTOCOL_OK) {
-        rc = session->send(packet, written_size, message.recv_time_ms);
+        rc = session->send(packet, written_size, recv_time_ms);
     }
     delete[] packet;
 
@@ -104,8 +104,6 @@ static int send_proto_message(
 }
 
 GatewaySession::GatewaySession()
-    : link_(NULL),
-      link_id_(0u)
 {
     std::call_once(handlers_once_, []() {
         register_handlers();
@@ -117,30 +115,17 @@ void GatewaySession::register_handlers()
     handlers_[proto::CS_PING] = &GatewaySession::handle_ping;
 }
 
-void GatewaySession::close()
-{
-    reset();
-}
-
-int GatewaySession::active() const
-{
-    if (!service_session::Session::active() || link_ == NULL || link_id_ == 0u) {
-        return 0;
-    }
-    if (service_session::Session::link_id() != link_id_) {
-        return 0;
-    }
-    return 1;
-}
-
-uint64_t GatewaySession::link_id() const
-{
-    return link_id_;
-}
-
 abe::adapter::net::TcpLink* GatewaySession::link() const
 {
-    return link_;
+    if (!active()) {
+        return NULL;
+    }
+    return (abe::adapter::net::TcpLink*)&tcp_link_;
+}
+
+abe::adapter::net::TcpLink* GatewaySession::tcp_link_slot()
+{
+    return &tcp_link_;
 }
 
 int GatewaySession::handle_packet(
@@ -148,13 +133,17 @@ int GatewaySession::handle_packet(
     uint32_t packet_size,
     uint64_t now_ms)
 {
-    abe_msg_packet_view_t view;
-    service_session::SessionMessage message;
-    int rc;
+    return receive(packet, packet_size, now_ms);
+}
 
-    if (!active()) {
-        return proto::ERROR_CODE_SESSION_CLOSED;
-    }
+int GatewaySession::on_message(
+    const void* packet,
+    uint32_t packet_size,
+    uint64_t now_ms)
+{
+    abe_msg_packet_view_t view;
+    GatewayMessage message;
+    int rc;
 
     rc = abe_msg_packet_decode(packet, packet_size, &view);
     if (rc != ABE_PROTOCOL_OK) {
@@ -164,7 +153,6 @@ int GatewaySession::handle_packet(
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
-    mark_received(now_ms);
     message.message_id = view.header.msg_id;
     message.data = view.body;
     message.size = view.body_size;
@@ -173,7 +161,7 @@ int GatewaySession::handle_packet(
 }
 
 int GatewaySession::dispatch_message(
-    const service_session::SessionMessage& message)
+    const GatewayMessage& message)
 {
     std::unordered_map<uint32_t, MessageHandler>::const_iterator it;
 
@@ -189,7 +177,7 @@ int GatewaySession::dispatch_message(
 }
 
 int GatewaySession::handle_ping(
-    const service_session::SessionMessage& message)
+    const GatewayMessage& message)
 {
     proto::PB_CS_PING request;
     proto::PB_SC_PONG response;
@@ -212,35 +200,35 @@ int GatewaySession::handle_ping(
 
     rc = send_proto_message(
         this,
-        message,
+        message.recv_time_ms,
         proto::SC_PONG,
         response);
     return rc;
 }
 
 int GatewaySession::handle_backend_message(
-    const service_session::SessionMessage& message)
+    const GatewayMessage& message)
 {
     ABE_LOG_DEBUG(
-        "gateway backend route is not connected msg_id=%u link_id=%llu body_size=%u",
+        "gateway backend route is not connected msg_id=%u conn_id=%llu body_size=%u",
         message.message_id,
-        (unsigned long long)link_id_,
+        (unsigned long long)conn_id(),
         message.size);
     return proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
 }
 
-int GatewaySession::on_open(
+int GatewaySession::on_connect(
     const service_session::SessionOpenRequest& request)
 {
     abe::adapter::net::TcpLink* link;
 
-    link = (abe::adapter::net::TcpLink*)request.link_user_data;
-    if (link == NULL || request.link_id != (uint64_t)(uintptr_t)link) {
+    link = (abe::adapter::net::TcpLink*)request.user_data;
+    if (link == NULL ||
+        link != &tcp_link_ ||
+        request.conn_id != (uint64_t)(uintptr_t)&tcp_link_) {
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
-    link_ = link;
-    link_id_ = request.link_id;
     return proto::ERROR_CODE_OK;
 }
 
@@ -248,27 +236,20 @@ void GatewaySession::on_close(uint32_t reason, uint64_t now_ms)
 {
     (void)reason;
     (void)now_ms;
-    clear_gateway_state();
+    tcp_link_.disconnect();
 }
 
 void GatewaySession::on_reset()
 {
-    clear_gateway_state();
 }
 
-int GatewaySession::on_send(const void* data, uint32_t size)
+int GatewaySession::send_packet(const void* data, uint32_t size)
 {
-    if (!active() || link_ == NULL) {
+    if (!active() || !tcp_link_.valid()) {
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
 
-    return link_->send(data, size);
-}
-
-void GatewaySession::clear_gateway_state()
-{
-    link_ = NULL;
-    link_id_ = 0u;
+    return tcp_link_.send(data, size);
 }
 
 } /* namespace gateway */

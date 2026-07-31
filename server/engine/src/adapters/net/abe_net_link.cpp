@@ -250,6 +250,23 @@ TcpLink::TcpLink() : conn_(NULL), close_on_destroy_(0)
     tcp_callbacks_clear(&callbacks_);
 }
 
+TcpLink::TcpLink(TcpLink&& other)
+    : conn_(other.conn_),
+      close_on_destroy_(other.close_on_destroy_),
+      callbacks_(other.callbacks_)
+{
+    abe_net_tcp_callbacks_t raw_callbacks;
+
+    other.conn_ = NULL;
+    other.close_on_destroy_ = 0;
+    tcp_callbacks_clear(&other.callbacks_);
+
+    if (conn_ != NULL) {
+        TcpLink::fill_raw_callbacks(&raw_callbacks, this);
+        abe_net_tcp_set_callbacks(conn_, &raw_callbacks);
+    }
+}
+
 TcpLink::~TcpLink()
 {
     if (conn_ != NULL && close_on_destroy_ != 0) {
@@ -257,6 +274,30 @@ TcpLink::~TcpLink()
     }
     conn_ = NULL;
     close_on_destroy_ = 0;
+}
+
+TcpLink& TcpLink::operator=(TcpLink&& other)
+{
+    abe_net_tcp_callbacks_t raw_callbacks;
+
+    if (this == &other) {
+        return *this;
+    }
+
+    close();
+    conn_ = other.conn_;
+    close_on_destroy_ = other.close_on_destroy_;
+    callbacks_ = other.callbacks_;
+
+    other.conn_ = NULL;
+    other.close_on_destroy_ = 0;
+    tcp_callbacks_clear(&other.callbacks_);
+
+    if (conn_ != NULL) {
+        TcpLink::fill_raw_callbacks(&raw_callbacks, this);
+        abe_net_tcp_set_callbacks(conn_, &raw_callbacks);
+    }
+    return *this;
 }
 
 int TcpLink::connect(Loop* loop, const TcpConfig* config)

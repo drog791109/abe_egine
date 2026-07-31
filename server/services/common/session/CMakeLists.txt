@@ -1,6 +1,6 @@
 add_library(abe_service_session STATIC
     abe_session.cpp
-    abe_session_server.cpp
+    abe_session_manager.cpp
 )
 
 set_target_properties(abe_service_session
@@ -17,5 +17,8 @@ target_include_directories(abe_service_session
 
 target_link_libraries(abe_service_session
     PUBLIC
+        abe_base_error
         abe_proto_client
+    PRIVATE
+        abe_engine_log
 )

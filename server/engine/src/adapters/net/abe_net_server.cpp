@@ -11,6 +11,7 @@ TcpServer::TcpServer()
     : loop_(NULL),
       links_(NULL),
       link_count_(0),
+      active_count_(0u),
       max_packet_size_(0)
 {
     memset(&callbacks_, 0, sizeof(callbacks_));
@@ -27,7 +28,10 @@ int TcpServer::init(Loop* loop, const TcpServerConfig* config)
     int rc;
 
     if (loop == NULL || !loop->valid() ||
-        config == NULL || config->links == NULL || config->link_count == 0u) {
+        config == NULL ||
+        config->link_count == 0u ||
+        (config->links == NULL &&
+         config->callbacks.acquire_link == NULL)) {
         return ABE_NET_INVALID_ARG;
     }
 
@@ -35,6 +39,7 @@ int TcpServer::init(Loop* loop, const TcpServerConfig* config)
     loop_ = loop;
     links_ = config->links;
     link_count_ = config->link_count;
+    active_count_ = 0u;
     max_packet_size_ = config->max_packet_size;
     callbacks_ = config->callbacks;
 
@@ -74,6 +79,7 @@ void TcpServer::close()
     loop_ = NULL;
     links_ = NULL;
     link_count_ = 0u;
+    active_count_ = 0u;
     max_packet_size_ = 0u;
     memset(&callbacks_, 0, sizeof(callbacks_));
 }
@@ -105,7 +111,7 @@ uint32_t TcpServer::active_count() const
 
     count = 0u;
     if (links_ == NULL) {
-        return 0u;
+        return active_count_;
     }
     for (index = 0u; index < link_count_; ++index) {
         if (links_[index].valid()) {
@@ -130,7 +136,11 @@ TcpLink* TcpServer::find_free_link()
     uint32_t index;
 
     if (links_ == NULL) {
-        return NULL;
+        if (callbacks_.acquire_link == NULL ||
+            active_count_ >= link_count_) {
+            return NULL;
+        }
+        return callbacks_.acquire_link(this, callbacks_.user_data);
     }
     for (index = 0u; index < link_count_; ++index) {
         if (!links_[index].valid()) {
@@ -144,8 +154,11 @@ TcpLink* TcpServer::find_link(TcpLink* link)
 {
     uint32_t index;
 
-    if (links_ == NULL || link == NULL) {
+    if (link == NULL) {
         return NULL;
+    }
+    if (links_ == NULL) {
+        return link;
     }
     for (index = 0u; index < link_count_; ++index) {
         if (&links_[index] == link) {
@@ -185,6 +198,7 @@ void TcpServer::on_accept(
     slot->set_user_data(server);
     slot->on_receive(TcpServer::on_link_receive);
     slot->on_disconnect(TcpServer::on_link_disconnect);
+    ++server->active_count_;
     if (server->callbacks_.on_connect != NULL) {
         server->callbacks_.on_connect(server, slot, server->callbacks_.user_data);
     }
@@ -220,6 +234,9 @@ void TcpServer::on_link_disconnect(
         }
         if (link != NULL) {
             link->detach();
+        }
+        if (server->active_count_ > 0u) {
+            --server->active_count_;
         }
     }
 }

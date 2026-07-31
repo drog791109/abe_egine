@@ -16,6 +16,25 @@ target_link_libraries(abe_service_runtime_test
 
 add_test(NAME abe_service_runtime_test COMMAND abe_service_runtime_test)
 
+add_executable(abe_service_memory_pool_test
+    abe_service_memory_pool_test.cpp
+)
+
+set_target_properties(abe_service_memory_pool_test
+    PROPERTIES
+        CXX_STANDARD 11
+        CXX_STANDARD_REQUIRED YES
+        CXX_EXTENSIONS NO
+)
+
+target_link_libraries(abe_service_memory_pool_test
+    PRIVATE
+        abe_service_memory_pool
+        abe_engine_log
+)
+
+add_test(NAME abe_service_memory_pool_test COMMAND abe_service_memory_pool_test)
+
 add_executable(abe_player_store_proto_test
     abe_player_store_proto_test.cpp
 )

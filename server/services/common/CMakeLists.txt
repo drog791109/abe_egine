@@ -1,3 +1,24 @@
+add_library(abe_service_memory_pool STATIC
+    abe_service_memory_pool.cpp
+)
+
+set_target_properties(abe_service_memory_pool
+    PROPERTIES
+        CXX_STANDARD 11
+        CXX_STANDARD_REQUIRED YES
+        CXX_EXTENSIONS NO
+)
+
+target_include_directories(abe_service_memory_pool
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(abe_service_memory_pool
+    PUBLIC
+        abe_base_shm
+)
+
 add_library(abe_service_common STATIC
     abe_service_runtime.cpp
 )

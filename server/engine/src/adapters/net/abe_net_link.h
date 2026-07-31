@@ -102,7 +102,9 @@ private:
 class TcpLink {
 public:
     TcpLink();
+    TcpLink(TcpLink&& other);
     ~TcpLink();
+    TcpLink& operator=(TcpLink&& other);
 
     /*
      * TcpLink wraps one TCP connection. connect() creates an outbound

@@ -129,7 +129,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - 关闭服务，再销毁消息队列、时间轮、网络 `Loop`、Redis、MySQL 工作线程、雪花 ID、配置和日志。
 
 每个具体服务保留自己的 server 对象，并继承公共 `Service` 接口。入口里只创建 server，然后调用
-`run(server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionServer、RPC 客户端、缓存连接等。
+`run(server)`。服务模块仍然负责自己的业务资源，例如监听端口、SessionManager、RPC 客户端、缓存连接等。
 
 ## 服务间消息
 
@@ -168,11 +168,11 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - `abe_gateway` 是可启动进程，默认监听 `0.0.0.0:7000`。
 - gateway 可执行文件固定输出到 `bin/abe_gateway`，配置文件固定使用 `bin/gate.json`。
 - `abe_gateway_main.cpp` 只创建 `GatewayServer`，然后调用公共 `run()`。
-- `GatewayServer` 是普通 server 对象，封装 gateway 模块生命周期，持有 tcp server、SessionServer、link 槽位和 gateway session 槽位。
+- `GatewayServer` 是普通 server 对象，封装 gateway 模块生命周期，持有 tcp server、SessionManager、link 槽位和 gateway session 槽位。
 - `GatewayServer` 默认配置文件是 `bin/gate.json`，服务进程不再接受命令行参数覆盖。
 - 网络 `Loop` 由 `ServiceRuntime` 创建和驱动，`GatewayServer` 只在初始化时把监听 server 挂到该 loop。
 - 进程采用单主循环事件驱动模型，不创建业务线程；需要扩容时优先多开进程实例。
-- `GatewayServer` 把 `TcpServer` 回调接到 `GatewaySession` 和 `service/session::SessionServer`。
+- `GatewayServer` 把 `TcpServer` 回调接到 `GatewaySession` 和 `service/session::SessionManager`。
 - `GatewaySession` 继承 `service/session::Session`，是每条客户端 link 的会话对象。
 - TCP 外层仍使用 `engine/base/net` 的 4 字节大端长度头。
 - TCP payload 是固定 `MsgHeader` 加变长 `Body`。`MsgHeader` 的二进制编解码在 `engine/src/common/protocol`。
@@ -194,10 +194,10 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 7. `MessageQueue::process` 构造 `service::common::Message`，调用当前 service 的 `process_message()`。
 8. `GatewayServer::process_message` 从 `Message.source` 取回 `TcpLink*`，再调用 `GatewayServer::dispatch`。
 9. `GatewayServer::dispatch` 根据 `link_id` 找到 `GatewaySession`，调用 `GatewaySession::handle_packet`。
-10. `GatewaySession::handle_packet` 使用 `abe_msg_packet_decode()` 解出 `MsgHeader` 和 body，更新会话接收时间，再按 `MsgHeader.msg_id` 分发。
+10. `GatewaySession::handle_packet` 进入 `Session::receive()`，由基类更新会话活跃时间，再调用 `GatewaySession::on_message()` 解包。
 11. 登录、大厅和游戏消息按 ID 区间进入后端路由；Gateway 本地消息在所有 session 共享的静态 `handlers_` 中查找成员处理函数，并通过 `(this->*handler)(message)` 调用。
 
-回包链条是反向的：业务 handler 调 `Session::send()`，进入 `GatewaySession::on_send`，再调用 `TcpLink::send()`；底层 `abe_net_tcp_send()` 会重新加 4 字节长度头并写回 socket。
+回包链条是反向的：业务 handler 调 `Session::send()`，进入 `GatewaySession::send_packet()`，再调用 `TcpLink::send()`；底层 `abe_net_tcp_send()` 会重新加 4 字节长度头并写回 socket。
 
 服务间消息使用同一个 `MsgHeader + Body` 包格式。后续装配 RPC 或服务路由时继续复用 `rpc_id`、`source_server`、`target_server`、`route_type` 和 `flags` 字段。
 

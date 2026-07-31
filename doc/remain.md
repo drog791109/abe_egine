@@ -13,8 +13,8 @@ flowchart TD
     TcpServer --> TcpLink[TcpLink slots]
     TcpServer --> BaseNet[engine/base/net<br/>libevent C API]
 
-    GatewayServer --> SessionServer[service/session::SessionServer]
-    SessionServer --> GatewaySession[GatewaySession slots]
+    GatewayServer --> SessionManager[service/session::SessionManager]
+    SessionManager --> GatewaySession[GatewaySession slots]
     GatewaySession -- 继承 --> Session[service/session::Session]
 
     GatewayServer --> Protocol[engine/common/protocol<br/>MsgHeader 解码]
@@ -24,14 +24,14 @@ sequenceDiagram
     participant Client
     participant TcpServer
     participant GatewayServer
-    participant SessionServer
+    participant SessionManager
     participant GatewaySession
     participant ServiceSession as service/session::Session
 
     Client->>TcpServer: TCP connect
     TcpServer->>GatewayServer: on_connect(link)
-    GatewayServer->>SessionServer: open_session(link_id, link)
-    SessionServer->>GatewaySession: on_open(request)
+    GatewayServer->>SessionManager: open_session(link_id, link)
+    SessionManager->>GatewaySession: on_connect(request)
 
     Client->>TcpServer: packet
     TcpServer->>GatewayServer: on_receive(link, packet)
@@ -39,7 +39,7 @@ sequenceDiagram
     Runtime->>GatewayServer: process_message(message)
     GatewayServer->>GatewaySession: handle_packet(packet)
     GatewaySession->>GatewaySession: abe_msg_packet_decode()
-    GatewaySession->>ServiceSession: Session handler dispatch
+    GatewaySession->>GatewaySession: message handler dispatch
 
     ServiceSession->>GatewaySession: send(data)
     GatewaySession->>TcpServer: TcpLink::send(data)
@@ -47,8 +47,8 @@ sequenceDiagram
 
     Client->>TcpServer: disconnect
     TcpServer->>GatewayServer: on_disconnect(link)
-    GatewayServer->>SessionServer: close_session(link_id)
-    SessionServer->>GatewaySession: on_close()
+    GatewayServer->>SessionManager: close_session(link_id)
+    SessionManager->>GatewaySession: on_close()
 ```
 
 还有几个问题
