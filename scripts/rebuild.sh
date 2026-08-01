@@ -16,7 +16,7 @@ Usage:
   scripts/rebuild.sh [target]
 
 Defaults:
-  target      abe_gateway
+  target      all
   BUILD_DIR   build/engine, or /tmp/abe_engine_build_<id> on VMware shared mounts
 
 This script does not start Docker. Run it inside /workspace in the dev container,

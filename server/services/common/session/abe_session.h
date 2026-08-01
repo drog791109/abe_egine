@@ -7,6 +7,10 @@ namespace abe {
 namespace service {
 namespace session {
 
+enum {
+    ABE_SESSION_UUID_CAPACITY = 37u  /* "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" + NUL */
+};
+
 class Session;
 
 typedef void (*SessionAuthChangeCallback)(
@@ -49,6 +53,7 @@ public:
     uint64_t last_active_ms() const;
     uint32_t close_reason() const;
     void* user_data() const;
+    const char* uuid() const;
 
 protected:
     virtual int on_connect(const SessionOpenRequest& request);
@@ -61,6 +66,7 @@ protected:
 
 private:
     void notify_auth_changed(uint64_t old_user_id, uint64_t new_user_id);
+    static void generate_uuid(char* out_uuid);
 
     uint64_t server_id_;
     uint64_t conn_id_;
@@ -72,6 +78,7 @@ private:
     void* auth_change_user_data_;
     bool authenticated_;
     bool active_;
+    char uuid_[ABE_SESSION_UUID_CAPACITY];
 };
 
 } /* namespace session */

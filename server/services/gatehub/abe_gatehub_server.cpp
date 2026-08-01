@@ -18,8 +18,8 @@ namespace proto = ::abe::proto::client;
 
 enum {
     ABE_GATEHUB_DEFAULT_MAX_SESSIONS = 4096u,
-    ABE_GATEHUB_DEFAULT_RECONNECT_GRACE_MS = 30000u,
-    ABE_GATEHUB_DEFAULT_SESSION_TTL_MS = 86400000u,
+    ABE_GATEHUB_DEFAULT_RECONNECT_GRACE_S = 30u,
+    ABE_GATEHUB_DEFAULT_SESSION_TTL_S = 86400u,
     ABE_GATEHUB_RANDOM_TOKEN_BYTES = 24u
 };
 
@@ -209,8 +209,8 @@ void set_gatehub_defaults(GateHubConfig* config)
     config->max_sessions = ABE_GATEHUB_DEFAULT_MAX_SESSIONS;
     config->allow_reconnect = 1u;
     config->replace_duplicate_login = 1u;
-    config->reconnect_grace_ms = ABE_GATEHUB_DEFAULT_RECONNECT_GRACE_MS;
-    config->session_ttl_ms = ABE_GATEHUB_DEFAULT_SESSION_TTL_MS;
+    config->reconnect_grace_s = ABE_GATEHUB_DEFAULT_RECONNECT_GRACE_S;
+    config->session_ttl_s = ABE_GATEHUB_DEFAULT_SESSION_TTL_S;
 }
 
 GateHubRegistry::GateHubRegistry()
@@ -234,7 +234,7 @@ int GateHubRegistry::init(
     if (config.max_sessions == 0u ||
         config.allow_reconnect > 1u ||
         config.replace_duplicate_login > 1u ||
-        config.session_ttl_ms == 0u ||
+        config.session_ttl_s == 0u ||
         id_generator == NULL) {
         return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
@@ -310,7 +310,7 @@ int GateHubRegistry::open_session(
         slot->info.connection_id = request.connection_id;
         slot->info.state = GATEHUB_SESSION_ONLINE;
         slot->info.reconnect_deadline_ms = 0u;
-        slot->info.expire_time_ms = add_deadline(request.now_ms, config_.session_ttl_ms);
+        slot->info.expire_time_ms = add_deadline(request.now_ms, config_.session_ttl_s * 1000u);
         out_result->session = slot->info;
         out_result->reconnected = 1u;
         return proto::ERROR_CODE_OK;
@@ -358,10 +358,10 @@ int GateHubRegistry::disconnect(
         return proto::ERROR_CODE_SESSION_NOT_FOUND;
     }
 
-    if (config_.allow_reconnect && config_.reconnect_grace_ms != 0u) {
+    if (config_.allow_reconnect && config_.reconnect_grace_s != 0u) {
         slot->info.state = GATEHUB_SESSION_RECONNECTING;
         slot->info.reconnect_deadline_ms =
-            add_deadline(now_ms, config_.reconnect_grace_ms);
+            add_deadline(now_ms, config_.reconnect_grace_s * 1000u);
         return proto::ERROR_CODE_OK;
     }
 
@@ -602,7 +602,7 @@ int GateHubRegistry::start_session(
     slot->info.uid = request.uid;
     slot->info.gateway_id = request.gateway_id;
     slot->info.connection_id = request.connection_id;
-    slot->info.expire_time_ms = add_deadline(request.now_ms, config_.session_ttl_ms);
+    slot->info.expire_time_ms = add_deadline(request.now_ms, config_.session_ttl_s * 1000u);
     slot->info.reconnect_deadline_ms = 0u;
     slot->info.state = GATEHUB_SESSION_ONLINE;
     out_result->session = slot->info;
@@ -667,20 +667,20 @@ int GateHubServer::load_config(const abe_config_t* config)
         return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
 
-    rc = abe_config_get_u64(config, "gatehub.reconnect_grace_ms", &value);
-    if (rc == ABE_CONFIG_OK && value <= 3600000u) {
-        config_.reconnect_grace_ms = value;
+    rc = abe_config_get_u64(config, "gatehub.reconnect_grace_s", &value);
+    if (rc == ABE_CONFIG_OK && value <= 3600u) {
+        config_.reconnect_grace_s = value;
     } else if (rc != ABE_CONFIG_NOT_FOUND) {
-        ABE_LOG_ERROR("invalid gatehub config path=gatehub.reconnect_grace_ms status=%s",
+        ABE_LOG_ERROR("invalid gatehub config path=gatehub.reconnect_grace_s status=%s",
             abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
         return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }
 
-    rc = abe_config_get_u64(config, "gatehub.session_ttl_ms", &value);
-    if (rc == ABE_CONFIG_OK && value >= 1000u && value <= 604800000u) {
-        config_.session_ttl_ms = value;
+    rc = abe_config_get_u64(config, "gatehub.session_ttl_s", &value);
+    if (rc == ABE_CONFIG_OK && value >= 1u && value <= 604800u) {
+        config_.session_ttl_s = value;
     } else if (rc != ABE_CONFIG_NOT_FOUND) {
-        ABE_LOG_ERROR("invalid gatehub config path=gatehub.session_ttl_ms status=%s",
+        ABE_LOG_ERROR("invalid gatehub config path=gatehub.session_ttl_s status=%s",
             abe_status_name(abe::service::common::SERVICE_STATUS_INVALID_ARG));
         return abe::service::common::SERVICE_STATUS_INVALID_ARG;
     }

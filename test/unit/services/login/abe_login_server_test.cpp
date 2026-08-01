@@ -28,8 +28,8 @@ static int init_login_server(
         "    \"max_sessions\": 8,"
         "    \"allow_reconnect\": true,"
         "    \"replace_duplicate_login\": true,"
-        "    \"reconnect_grace_ms\": 1000,"
-        "    \"session_ttl_ms\": 60000"
+        "    \"reconnect_grace_s\": 1,"
+        "    \"session_ttl_s\": 60"
         "  }"
         "}";
     abe_config_t* config;

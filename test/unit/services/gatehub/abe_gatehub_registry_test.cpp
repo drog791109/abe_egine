@@ -46,7 +46,7 @@ static int test_gatehub_reconnect(void)
 
     gatehub::set_gatehub_defaults(&config);
     config.max_sessions = 2u;
-    config.reconnect_grace_ms = 20u;
+    config.reconnect_grace_s = 20u;
     TEST_REQUIRE(registry.init(config, id_generator) == proto::ERROR_CODE_OK);
 
     TEST_REQUIRE(open_session(&registry, 100u, 1u, 11u, NULL, 1000u, &first) ==
@@ -127,14 +127,14 @@ static int test_gatehub_reconnect_expire(void)
 
     gatehub::set_gatehub_defaults(&config);
     config.max_sessions = 1u;
-    config.reconnect_grace_ms = 5u;
+    config.reconnect_grace_s = 5u;
     TEST_REQUIRE(registry.init(config, id_generator) == proto::ERROR_CODE_OK);
     TEST_REQUIRE(open_session(&registry, 300u, 3u, 33u, NULL, 1000u, &result) ==
         proto::ERROR_CODE_OK);
     TEST_REQUIRE(registry.disconnect(3u, 33u, 1001u) == proto::ERROR_CODE_OK);
 
     closed_count = 0u;
-    TEST_REQUIRE(registry.update(1007u, &closed_count) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(registry.update(6002u, &closed_count) == proto::ERROR_CODE_OK);
     TEST_REQUIRE(closed_count == 1u);
     TEST_REQUIRE(registry.active_count() == 0u);
 

@@ -9,13 +9,13 @@
   "log": {
     "output": "daily",
     "level": "info",
-    "dir": "bin/logs/login"
+    "dir": "bin/logs/game"
   },
   "mysql": {
     "enable": 0,
     "host": "127.0.0.1",
     "port": 3306,
-    "database": "abe_login",
+    "database": "abe_game",
     "user": "abe",
     "password": "abe123",
     "worker_count": 4,
@@ -32,19 +32,12 @@
     "memory_pool_capacity": 0
   },
   "id": {
-    "node_id": 2
+    "node_id": 5
   },
-  "login": {
-    "max_accounts": 4096,
-    "allow_register": true,
-    "unique_nickname": true,
-    "require_auth_token": true,
-    "dirty_words": "admin,administrator,system,moderator,gm,root",
-    "default_region": "global",
-    "max_sessions": 4096,
-    "allow_reconnect": true,
-    "replace_duplicate_login": true,
-    "reconnect_grace_s": 30,
-    "session_ttl_s": 86400
+  "game": {
+    "server_id": 3,
+    "max_rooms": 1024,
+    "max_players_per_room": 8,
+    "idle_timeout_ms": 60000
   }
 }

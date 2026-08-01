@@ -38,7 +38,7 @@
     "max_sessions": 4096,
     "allow_reconnect": true,
     "replace_duplicate_login": true,
-    "reconnect_grace_ms": 30000,
-    "session_ttl_ms": 86400000
+    "reconnect_grace_s": 30,
+    "session_ttl_s": 86400
   }
 }

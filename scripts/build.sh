@@ -16,7 +16,7 @@ Usage:
   scripts/build.sh [target]
 
 Defaults:
-  target      abe_gateway
+  target      all
   BUILD_DIR   build/engine, or /tmp/abe_engine_build_<id> on VMware shared mounts
 
 Environment:
@@ -55,7 +55,7 @@ default_build_dir() {
   esac
 }
 
-target=${1:-abe_gateway}
+target=${1:-all}
 if [ "$#" -gt 1 ]; then
   usage >&2
   exit 2
@@ -89,4 +89,20 @@ if [ "${target}" != "all" ]; then
 fi
 build_args+=(-j "${jobs}")
 
+build_start=$(date +%s)
+build_start_fmt=$(date '+%Y-%m-%d %H:%M:%S')
+printf '\nBuild started  at %s\n' "${build_start_fmt}"
+set +e
 cmake "${build_args[@]}"
+build_rc=$?
+set -e
+build_end=$(date +%s)
+build_end_fmt=$(date '+%Y-%m-%d %H:%M:%S')
+elapsed=$(( build_end - build_start ))
+printf 'Build finished at %s\n' "${build_end_fmt}"
+if [ "${build_rc}" -eq 0 ]; then
+    printf 'Build succeeded in %dm %02ds\n' $(( elapsed / 60 )) $(( elapsed % 60 ))
+else
+    printf 'Build FAILED in %dm %02ds (exit code %d)\n' $(( elapsed / 60 )) $(( elapsed % 60 )) "${build_rc}" >&2
+    exit "${build_rc}"
+fi

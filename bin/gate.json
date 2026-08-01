@@ -43,5 +43,25 @@
     "max_packet_size": 0,
     "server_id": 1,
     "idle_ms": 60000
+  },
+  "login_service": {
+    "host": "127.0.0.1",
+    "port": 8001,
+    "connect_timeout_ms": 5000
+  },
+  "gatehub_service": {
+    "host": "127.0.0.1",
+    "port": 8002,
+    "connect_timeout_ms": 5000
+  },
+  "lobby_service": {
+    "host": "127.0.0.1",
+    "port": 8003,
+    "connect_timeout_ms": 5000
+  },
+  "game_service": {
+    "host": "127.0.0.1",
+    "port": 8004,
+    "connect_timeout_ms": 5000
   }
 }

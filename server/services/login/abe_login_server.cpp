@@ -268,20 +268,20 @@ int LoginServer::load_config(const abe_config_t* config)
         return svc::SERVICE_STATUS_INVALID_ARG;
     }
 
-    rc = abe_config_get_u64(config, "login.reconnect_grace_ms", &value);
-    if (rc == ABE_CONFIG_OK && value <= 3600000u) {
-        config_.sessions.reconnect_grace_ms = value;
+    rc = abe_config_get_u64(config, "login.reconnect_grace_s", &value);
+    if (rc == ABE_CONFIG_OK && value <= 3600u) {
+        config_.sessions.reconnect_grace_s = value;
     } else if (rc != ABE_CONFIG_NOT_FOUND) {
-        ABE_LOG_ERROR("invalid login config path=login.reconnect_grace_ms status=%s",
+        ABE_LOG_ERROR("invalid login config path=login.reconnect_grace_s status=%s",
             abe_status_name(svc::SERVICE_STATUS_INVALID_ARG));
         return svc::SERVICE_STATUS_INVALID_ARG;
     }
 
-    rc = abe_config_get_u64(config, "login.session_ttl_ms", &value);
-    if (rc == ABE_CONFIG_OK && value >= 1000u && value <= 604800000u) {
-        config_.sessions.session_ttl_ms = value;
+    rc = abe_config_get_u64(config, "login.session_ttl_s", &value);
+    if (rc == ABE_CONFIG_OK && value >= 1u && value <= 604800u) {
+        config_.sessions.session_ttl_s = value;
     } else if (rc != ABE_CONFIG_NOT_FOUND) {
-        ABE_LOG_ERROR("invalid login config path=login.session_ttl_ms status=%s",
+        ABE_LOG_ERROR("invalid login config path=login.session_ttl_s status=%s",
             abe_status_name(svc::SERVICE_STATUS_INVALID_ARG));
         return svc::SERVICE_STATUS_INVALID_ARG;
     }

@@ -2,7 +2,12 @@
 
 #include "protocol.pb.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 namespace abe {
 namespace service {
@@ -22,6 +27,7 @@ Session::Session()
       authenticated_(false),
       active_(false)
 {
+    memset(uuid_, 0, sizeof(uuid_));
 }
 
 Session::~Session()
@@ -42,6 +48,7 @@ int Session::open(uint64_t server_id, const SessionOpenRequest& request)
     last_active_ms_ = request.now_ms;
     user_data_ = request.user_data;
     active_ = true;
+    generate_uuid(uuid_);
 
     rc = on_connect(request);
     if (rc != proto::ERROR_CODE_OK) {
@@ -75,6 +82,7 @@ void Session::reset()
     user_data_ = NULL;
     authenticated_ = false;
     active_ = false;
+    memset(uuid_, 0, sizeof(uuid_));
     on_reset();
 }
 
@@ -196,6 +204,83 @@ uint32_t Session::close_reason() const
 void* Session::user_data() const
 {
     return user_data_;
+}
+
+const char* Session::uuid() const
+{
+    return uuid_;
+}
+
+void Session::generate_uuid(char* out_uuid)
+{
+    static const char hex[] = "0123456789abcdef";
+    unsigned char bytes[16];
+    int file;
+    ssize_t count;
+    uint32_t offset;
+    uint32_t i;
+
+    if (out_uuid == NULL) {
+        return;
+    }
+
+    memset(bytes, 0, sizeof(bytes));
+    file = ::open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    if (file >= 0) {
+        offset = 0u;
+        while (offset < sizeof(bytes)) {
+            count = ::read(file, bytes + offset,
+                sizeof(bytes) - offset);
+            if (count > 0) {
+                offset += (uint32_t)count;
+            } else if (count < 0 && errno == EINTR) {
+                continue;
+            } else {
+                break;
+            }
+        }
+        ::close(file);
+    }
+
+    /* version 4, variant 1 */
+    bytes[6] = (bytes[6] & 0x0fu) | 0x40u;
+    bytes[8] = (bytes[8] & 0x3fu) | 0x80u;
+
+    i = 0u;
+    /* 8 hex digits */
+    out_uuid[0]  = hex[(bytes[0]  >> 4u) & 0x0fu];
+    out_uuid[1]  = hex[bytes[0]  & 0x0fu];
+    out_uuid[2]  = hex[(bytes[1]  >> 4u) & 0x0fu];
+    out_uuid[3]  = hex[bytes[1]  & 0x0fu];
+    out_uuid[4]  = hex[(bytes[2]  >> 4u) & 0x0fu];
+    out_uuid[5]  = hex[bytes[2]  & 0x0fu];
+    out_uuid[6]  = hex[(bytes[3]  >> 4u) & 0x0fu];
+    out_uuid[7]  = hex[bytes[3]  & 0x0fu];
+    out_uuid[8]  = '-';
+    /* 4 hex digits */
+    out_uuid[9]  = hex[(bytes[4]  >> 4u) & 0x0fu];
+    out_uuid[10] = hex[bytes[4]  & 0x0fu];
+    out_uuid[11] = hex[(bytes[5]  >> 4u) & 0x0fu];
+    out_uuid[12] = hex[bytes[5]  & 0x0fu];
+    out_uuid[13] = '-';
+    /* 4 hex digits (version) */
+    out_uuid[14] = hex[(bytes[6]  >> 4u) & 0x0fu];
+    out_uuid[15] = hex[bytes[6]  & 0x0fu];
+    out_uuid[16] = hex[(bytes[7]  >> 4u) & 0x0fu];
+    out_uuid[17] = hex[bytes[7]  & 0x0fu];
+    out_uuid[18] = '-';
+    /* 4 hex digits (variant) */
+    out_uuid[19] = hex[(bytes[8]  >> 4u) & 0x0fu];
+    out_uuid[20] = hex[bytes[8]  & 0x0fu];
+    out_uuid[21] = hex[(bytes[9]  >> 4u) & 0x0fu];
+    out_uuid[22] = hex[bytes[9]  & 0x0fu];
+    out_uuid[23] = '-';
+    /* 12 hex digits */
+    for (i = 0u; i < 6u; ++i) {
+        out_uuid[24u + i * 2u]      = hex[(bytes[10u + i] >> 4u) & 0x0fu];
+        out_uuid[24u + i * 2u + 1u] = hex[bytes[10u + i] & 0x0fu];
+    }
+    out_uuid[36] = '\0';
 }
 
 void Session::update_activity(uint64_t now_ms)

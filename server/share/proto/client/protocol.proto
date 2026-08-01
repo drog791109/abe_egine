@@ -20,7 +20,7 @@ enum ProtocolId {
   SC_PONG = 10002;
   SC_ERROR_NOTIFY = 10003;
 
-  // login message
+  // [service: login begin]
   CS_LOGIN_REQ = 11001;
   SC_LOGIN_RESP = 11002;
   SC_KICK_NOTIFY = 11005;
@@ -31,7 +31,8 @@ enum ProtocolId {
   CS_DELETE_CHARACTOR = 11010;
   SC_DELETE_CHARACTOR = 11011;
 
-  // lobby message
+
+  // [service: lobby begin]
   CS_ENTER_LOBBY_REQ = 12001;
   SC_ENTER_LOBBY_RESP = 12002;
   CS_ROOM_LIST_REQ = 12003;
@@ -49,7 +50,8 @@ enum ProtocolId {
   CS_LOBBY_CHAT_REQ = 12035;
   SC_LOBBY_CHAT_NOTIFY = 12036;
 
-  // game message
+
+  // [service: game begin]
   CS_ENTER_GAME_REQ = 13001;
   SC_ENTER_GAME_RESP = 13002;
   CS_LEAVE_GAME_REQ = 13003;
@@ -59,6 +61,7 @@ enum ProtocolId {
   SC_ROOM_CHAT_NOTIFY = 13007;
   SC_GAME_OVER_NOTIFY = 13098;
   SC_LEAVE_GAME_RESP = 13099;
+
 
 }
 

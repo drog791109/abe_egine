@@ -25,8 +25,8 @@ struct GateHubConfig {
     uint32_t max_sessions;
     uint32_t allow_reconnect;
     uint32_t replace_duplicate_login;
-    uint64_t reconnect_grace_ms;
-    uint64_t session_ttl_ms;
+    uint64_t reconnect_grace_s;
+    uint64_t session_ttl_s;
 };
 
 struct GateHubOpenRequest {
