@@ -120,3 +120,15 @@ code, build files, tests, or architecture documentation.
   the file name.
 - Keep shell scripts with LF line endings. Scripts intended to be executed
   directly should keep executable permission.
+
+## Python 3 Script Rules
+
+- Every Python 3 script must begin with a comment block or module docstring
+  that documents its usage, parameters, and at least one realistic example.
+- Put the documentation immediately after the shebang when the script has one;
+  otherwise put it at the start of the file.
+- The usage section must show how to invoke the script from the repository
+  root. The parameters section must describe every command-line parameter,
+  relevant environment variable, default value, and validation constraint.
+- Keep the header synchronized with `argparse` definitions and update it when
+  the script's interface changes.

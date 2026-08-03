@@ -1,5 +1,33 @@
 #!/usr/bin/env python3
-"""Exercise the gateway login, lobby, game, leave, heartbeat, and wait flow."""
+"""Exercise the gateway login, lobby, game, leave, heartbeat, and wait flow.
+
+Usage:
+    python3 test/tools/abe_gateway_flow.py [options]
+
+Parameters:
+    --host HOST                  Gateway host (default: 127.0.0.1).
+    --port PORT                  Gateway TCP port (default: 7000).
+    --timeout SECONDS            Socket timeout (default: 3.0).
+    --account ACCOUNT            Login account (default: py_flow_user).
+    --nickname NICKNAME          Player nickname (default: PyFlow).
+    --token TOKEN                Authentication token (default: test-auth-token).
+    --device-id DEVICE_ID        Client device identifier (default: python-flow).
+    --client-version VERSION     Client version (default: python-stdlib).
+    --room-id ROOM_ID            Game room ID (default: 1001).
+    --room-version VERSION       Game room version (default: 1).
+    --leave-reason REASON        Game leave reason (default: 1).
+    --heartbeat-count COUNT      Number of heartbeat requests, at least 1
+                                 (default: 1).
+    --heartbeat-interval-ms MS   Delay between heartbeats in milliseconds
+                                 (default: 50).
+    --wait-ms MS                 Time to wait for unsolicited messages in
+                                 milliseconds (default: 300).
+
+Examples:
+    python3 test/tools/abe_gateway_flow.py
+    python3 test/tools/abe_gateway_flow.py --host 127.0.0.1 --port 7000 \
+        --account flow_user --room-id 1001 --heartbeat-count 3
+"""
 
 import argparse
 import socket

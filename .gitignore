@@ -7,3 +7,9 @@
 
 # Build outputs
 /build/
+
+# Python generated files
+__pycache__/
+*.pyc
+*.pyo
+*$py.class
