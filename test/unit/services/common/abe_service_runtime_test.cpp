@@ -398,6 +398,54 @@ static int test_run_applies_runtime_config_file(void)
     return ABE_TEST_STATUS_OK;
 }
 
+static int test_run_can_disable_external_backends(void)
+{
+    static const char* config_path = "/tmp/abe_service_runtime_disable_backends_test.json";
+    static const char json_text[] =
+        "{"
+        "  \"runtime\": {"
+        "    \"tick_ms\": 1,"
+        "    \"message_tick_hz\": 1000,"
+        "    \"message_max_per_tick\": 1,"
+        "    \"message_queue_capacity\": 8"
+        "  },"
+        "  \"log\": {"
+        "    \"output\": \"console\","
+        "    \"level\": \"off\""
+        "  },"
+        "  \"mysql\": {"
+        "    \"enable\": 0"
+        "  },"
+        "  \"redis\": {"
+        "    \"enable\": 0"
+        "  },"
+        "  \"id\": {"
+        "    \"node_id\": 0"
+        "  }"
+        "}";
+    TestService service;
+    int rc;
+
+    TEST_REQUIRE(write_text_file(config_path, json_text) == ABE_TEST_STATUS_OK);
+
+    service.runtime_config_path = config_path;
+    service.schedule_messages = true;
+    service.wait_for_messages = true;
+    service.target_message_count = 3u;
+    rc = service_common::run(service);
+    remove(config_path);
+
+    TEST_REQUIRE(rc == service_common::SERVICE_STATUS_OK);
+    TEST_REQUIRE(service.config_seen);
+    TEST_REQUIRE(!service.mysql_seen);
+    TEST_REQUIRE(!service.redis_seen);
+    TEST_REQUIRE(service.id_seen);
+    TEST_REQUIRE(service.message_count == 3u);
+    TEST_REQUIRE(service.first_update_message_count == 1u);
+    TEST_REQUIRE(service.close_count == 1u);
+    return ABE_TEST_STATUS_OK;
+}
+
 static int test_run_rejects_oversized_runtime_config_string(void)
 {
     static const char* config_path = "/tmp/abe_service_runtime_config_long_string_test.json";
@@ -515,6 +563,9 @@ int main()
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_run_applies_runtime_config_file() != ABE_TEST_STATUS_OK) {
+        return ABE_TEST_STATUS_FAILED;
+    }
+    if (test_run_can_disable_external_backends() != ABE_TEST_STATUS_OK) {
         return ABE_TEST_STATUS_FAILED;
     }
     if (test_run_rejects_oversized_runtime_config_string() != ABE_TEST_STATUS_OK) {

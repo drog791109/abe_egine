@@ -153,6 +153,10 @@ static int test_gatehub_server_message_handlers(void)
     proto::PB_SC_ENTER_LOBBY_RESP lobby_response;
     proto::PB_CS_ROOM_LIST_REQ room_list;
     proto::PB_SC_ROOM_LIST_RESP room_list_response;
+    proto::PB_CS_ENTER_GAME_REQ enter_game;
+    proto::PB_SC_ENTER_GAME_RESP enter_game_response;
+    proto::PB_CS_LEAVE_GAME_REQ leave_game;
+    proto::PB_SC_LEAVE_GAME_RESP leave_game_response;
     svc::Context context;
 
     id_generator = NULL;
@@ -186,17 +190,55 @@ static int test_gatehub_server_message_handlers(void)
     TEST_REQUIRE(lobby_response.player().uid() == 400u);
     TEST_REQUIRE(lobby_response.lobby_time_ms() == 1010u);
 
+    enter_game.mutable_header()->set_protocol_id(proto::CS_ENTER_GAME_REQ);
+    enter_game.mutable_header()->set_seq(302u);
+    enter_game.mutable_header()->set_uid(400u);
+    enter_game.set_uid(400u);
+    enter_game.mutable_room()->set_room_id(9001u);
+    enter_game.mutable_room()->set_room_version(1u);
+    enter_game.set_session_token(open_result.session.session_token);
+    TEST_REQUIRE(server.handle_enter_game(
+            4u,
+            44u,
+            enter_game,
+            &enter_game_response,
+            1020u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(enter_game_response.header().protocol_id() == proto::SC_ENTER_GAME_RESP);
+    TEST_REQUIRE(enter_game_response.header().seq() == 302u);
+    TEST_REQUIRE(enter_game_response.result().error_code() == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(enter_game_response.room().room_id() == 9001u);
+    TEST_REQUIRE(enter_game_response.game_start_time_ms() == 1020u);
+    TEST_REQUIRE(enter_game_response.tick_rate() == 30u);
+
+    leave_game.mutable_header()->set_protocol_id(proto::CS_LEAVE_GAME_REQ);
+    leave_game.mutable_header()->set_seq(303u);
+    leave_game.mutable_header()->set_uid(400u);
+    leave_game.mutable_room()->set_room_id(9001u);
+    leave_game.mutable_room()->set_room_version(1u);
+    leave_game.set_reason(7u);
+    TEST_REQUIRE(server.handle_leave_game(
+            4u,
+            44u,
+            leave_game,
+            &leave_game_response,
+            1030u) == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(leave_game_response.header().protocol_id() == proto::SC_LEAVE_GAME_RESP);
+    TEST_REQUIRE(leave_game_response.header().seq() == 303u);
+    TEST_REQUIRE(leave_game_response.result().error_code() == proto::ERROR_CODE_OK);
+    TEST_REQUIRE(leave_game_response.room().room_id() == 9001u);
+    TEST_REQUIRE(leave_game_response.reason() == 7u);
+
     room_list.mutable_header()->set_protocol_id(proto::CS_ROOM_LIST_REQ);
-    room_list.mutable_header()->set_seq(302u);
+    room_list.mutable_header()->set_seq(304u);
     room_list.set_uid(400u);
     TEST_REQUIRE(server.handle_room_list(
             4u,
             44u,
             room_list,
             &room_list_response,
-            1020u) == proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
+            1040u) == proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
     TEST_REQUIRE(room_list_response.header().protocol_id() == proto::SC_ROOM_LIST_RESP);
-    TEST_REQUIRE(room_list_response.header().seq() == 302u);
+    TEST_REQUIRE(room_list_response.header().seq() == 304u);
     TEST_REQUIRE(room_list_response.result().error_code() ==
         proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE);
 

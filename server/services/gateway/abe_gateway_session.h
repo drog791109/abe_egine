@@ -12,9 +12,13 @@ namespace abe {
 namespace service {
 namespace gateway {
 
+class GatewayBackend;
+
 class GatewaySession : public abe::service::session::Session {
 public:
     GatewaySession();
+
+    void set_backend(GatewayBackend* backend);
 
     abe::adapter::net::TcpLink* link() const;
     abe::adapter::net::TcpLink* tcp_link_slot();
@@ -45,6 +49,7 @@ private:
 
     abe::adapter::net::TcpLink tcp_link_;
 
+    GatewayBackend* backend_;
     static std::unordered_map<uint32_t, MessageHandler> handlers_;
     static std::once_flag handlers_once_;
 };

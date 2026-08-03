@@ -1,4 +1,5 @@
 add_library(abe_gateway_server STATIC
+    abe_gateway_backend.cpp
     abe_gateway_server.cpp
     abe_gateway_session.cpp
 )
@@ -14,6 +15,8 @@ target_link_libraries(abe_gateway_server
     PUBLIC
         abe_adapter_net
         abe_service_session
+        abe_login_server
+        abe_gatehub_server
         abe_common_protocol
         abe_base_time
         abe_service_common

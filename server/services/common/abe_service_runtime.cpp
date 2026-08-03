@@ -103,7 +103,8 @@ struct LogSettings {
 
 struct MysqlSettings {
     MysqlSettings()
-        : port(SERVICE_RUNTIME_DEFAULT_MYSQL_PORT),
+        : enabled(1),
+          port(SERVICE_RUNTIME_DEFAULT_MYSQL_PORT),
           worker_count(4u),
           queue_capacity(4096u)
     {
@@ -113,6 +114,7 @@ struct MysqlSettings {
         init_setting_text(password, sizeof(password), "abe123");
     }
 
+    uint32_t enabled;
     char host[SERVICE_RUNTIME_SETTING_HOST_SIZE];
     uint32_t port;
     char database[SERVICE_RUNTIME_SETTING_NAME_SIZE];
@@ -124,7 +126,8 @@ struct MysqlSettings {
 
 struct RedisSettings {
     RedisSettings()
-        : port(SERVICE_RUNTIME_DEFAULT_REDIS_PORT),
+        : enabled(1),
+          port(SERVICE_RUNTIME_DEFAULT_REDIS_PORT),
           database(0),
           connect_timeout_ms(1000u),
           command_timeout_ms(1000u),
@@ -134,6 +137,7 @@ struct RedisSettings {
         init_setting_text(password, sizeof(password), "");
     }
 
+    uint32_t enabled;
     char host[SERVICE_RUNTIME_SETTING_HOST_SIZE];
     uint32_t port;
     char password[SERVICE_RUNTIME_SETTING_SECRET_SIZE];
@@ -563,9 +567,11 @@ static int apply_runtime_config(
         {"runtime.message_tick_hz", 1u, 1000u, &settings->runtime.message_tick_hz},
         {"runtime.message_max_per_tick", 1u, 100000u, &settings->runtime.message_max_per_tick},
         {"runtime.message_queue_capacity", 1u, 1048576u, &settings->runtime.message_queue_capacity},
+        {"mysql.enable", 0u, 1u, &settings->mysql.enabled},
         {"mysql.port", 1u, 65535u, &settings->mysql.port},
         {"mysql.worker_count", 1u, 32u, &settings->mysql.worker_count},
         {"mysql.queue_capacity", 1u, 1048576u, &settings->mysql.queue_capacity},
+        {"redis.enable", 0u, 1u, &settings->redis.enabled},
         {"redis.port", 1u, 65535u, &settings->redis.port},
         {"redis.connect_timeout_ms", 1u, 60000u, &settings->redis.connect_timeout_ms},
         {"redis.command_timeout_ms", 0u, 60000u, &settings->redis.command_timeout_ms},
@@ -747,6 +753,10 @@ static int init_mysql(
         return SERVICE_STATUS_INVALID_ARG;
     }
     *out_mysql = NULL;
+    if (!config->mysql.enabled) {
+        ABE_LOG_INFO("mysql async disabled");
+        return SERVICE_STATUS_OK;
+    }
 
     memset(&mysql_config, 0, sizeof(mysql_config));
     mysql_config.mysql.host = config->mysql.host;
@@ -793,6 +803,10 @@ static int init_redis(
         return SERVICE_STATUS_INVALID_ARG;
     }
     *out_redis = NULL;
+    if (!config->redis.enabled) {
+        ABE_LOG_INFO("redis async disabled");
+        return SERVICE_STATUS_OK;
+    }
 
     memset(&redis_config, 0, sizeof(redis_config));
     redis_config.host = config->redis.host;
@@ -1029,20 +1043,24 @@ static int run_loop(
             break;
         }
 
-        rc = abe_db_mysql_async_update(context->mysql, 0u, NULL);
-        if (rc != ABE_DB_OK) {
-            ABE_LOG_ERROR("service mysql async update failed rc=%d", rc);
-            result = rc;
-            break;
+        if (context->mysql != NULL) {
+            rc = abe_db_mysql_async_update(context->mysql, 0u, NULL);
+            if (rc != ABE_DB_OK) {
+                ABE_LOG_ERROR("service mysql async update failed rc=%d", rc);
+                result = rc;
+                break;
+            }
         }
 
-        rc = abe_redis_async_update(context->redis);
-        if (rc != ABE_REDIS_OK) {
-            ABE_LOG_ERROR("service redis async update failed rc=%d error=%s",
-                rc,
-                abe_redis_async_last_error(context->redis));
-            result = rc;
-            break;
+        if (context->redis != NULL) {
+            rc = abe_redis_async_update(context->redis);
+            if (rc != ABE_REDIS_OK) {
+                ABE_LOG_ERROR("service redis async update failed rc=%d error=%s",
+                    rc,
+                    abe_redis_async_last_error(context->redis));
+                result = rc;
+                break;
+            }
         }
 
         rc = service.update(now_ms);

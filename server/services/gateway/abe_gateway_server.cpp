@@ -1,5 +1,6 @@
 #include "abe_gateway_server.h"
 
+#include "abe_gateway_backend.h"
 #include "abe_log.h"
 #include "abe_time.h"
 #include "protocol.pb.h"
@@ -38,6 +39,9 @@ void set_gateway_defaults(GatewayServerConfig* config)
 
 GatewayServer::GatewayServer()
     : message_queue_(NULL),
+      local_backend_(),
+      backend_(&local_backend_),
+      backend_ready_(0),
       session_ready_(0),
       tcp_ready_(0)
 {
@@ -161,6 +165,17 @@ int GatewayServer::init(abe::service::common::Context& context)
 
     message_queue_ = context.message_queue;
 
+    if (backend_ == NULL) {
+        backend_ = &local_backend_;
+    }
+
+    rc = backend_->init(context);
+    if (rc != abe::service::common::SERVICE_STATUS_OK) {
+        close(abe_time_mono_ms());
+        return rc;
+    }
+    backend_ready_ = 1;
+
     rc = init_sessions();
     if (rc != abe::service::common::SERVICE_STATUS_OK) {
         close(abe_time_mono_ms());
@@ -197,6 +212,13 @@ int GatewayServer::update(uint64_t now_ms)
         ABE_LOG_ERROR("gateway session update failed rc=%d", rc);
         return abe::service::common::SERVICE_STATUS_FAILED;
     }
+    if (backend_ready_ && backend_ != NULL) {
+        rc = backend_->update(now_ms);
+        if (rc != abe::service::common::SERVICE_STATUS_OK) {
+            ABE_LOG_ERROR("gateway backend update failed rc=%d", rc);
+            return rc;
+        }
+    }
     return abe::service::common::SERVICE_STATUS_OK;
 }
 
@@ -210,7 +232,16 @@ void GatewayServer::close(uint64_t now_ms)
         sessions_.close(now_ms);
         session_ready_ = 0;
     }
+    if (backend_ready_ && backend_ != NULL) {
+        backend_->close(now_ms);
+        backend_ready_ = 0;
+    }
     message_queue_ = NULL;
+}
+
+void GatewayServer::set_backend(GatewayBackend* backend)
+{
+    backend_ = backend == NULL ? &local_backend_ : backend;
 }
 
 int GatewayServer::on_connect(abe::adapter::net::TcpLink* link, uint64_t now_ms)
@@ -287,7 +318,7 @@ const abe::service::session::SessionManager* GatewayServer::session_manager() co
 
 int GatewayServer::initialized() const
 {
-    return session_ready_ && tcp_ready_;
+    return backend_ready_ && session_ready_ && tcp_ready_;
 }
 
 void GatewayServer::tcp_on_connect(
@@ -422,6 +453,7 @@ int GatewayServer::open_session_for_link(
     }
 
     gateway_session = (GatewaySession*)session;
+    gateway_session->set_backend(backend_);
     if (!gateway_session->active() || gateway_session->link() != link) {
         sessions_.close_session(request.conn_id, 0u, now_ms);
         link->disconnect();

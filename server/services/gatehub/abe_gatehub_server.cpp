@@ -110,6 +110,58 @@ static int validate_handler_context(
     return proto::ERROR_CODE_OK;
 }
 
+static int copy_session_token(
+    char* out_token,
+    uint32_t token_capacity,
+    const char* token)
+{
+    size_t token_size;
+
+    if (out_token == NULL || token_capacity == 0u) {
+        return ABE_INVALID_ARG;
+    }
+    if (token == NULL || token[0] == '\0') {
+        return ABE_NOT_FOUND;
+    }
+
+    token_size = strlen(token);
+    if (token_size >= token_capacity) {
+        return ABE_BUFFER_TOO_SMALL;
+    }
+    memcpy(out_token, token, token_size + 1u);
+    return ABE_OK;
+}
+
+static int validate_online_session(
+    const GateHubRegistry& registry,
+    uint64_t gateway_id,
+    uint64_t connection_id,
+    uint64_t uid,
+    GateHubSessionInfo* out_session)
+{
+    GateHubSessionInfo session;
+    int rc;
+
+    if (uid == 0u) {
+        return proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
+    }
+
+    rc = registry.find_session(uid, &session);
+    if (rc != proto::ERROR_CODE_OK) {
+        return rc;
+    }
+    if (session.gateway_id != gateway_id ||
+        session.connection_id != connection_id ||
+        session.state != GATEHUB_SESSION_ONLINE) {
+        return proto::ERROR_CODE_SESSION_CLOSED;
+    }
+
+    if (out_session != NULL) {
+        *out_session = session;
+    }
+    return proto::ERROR_CODE_OK;
+}
+
 static bool token_equal(const char* left, const char* right)
 {
     size_t left_size;
@@ -586,12 +638,18 @@ int GateHubRegistry::start_session(
             : proto::ERROR_CODE_SYSTEM_INTERNAL;
     }
 
-    rc = generate_session_token(
+    rc = copy_session_token(
         slot->info.session_token,
-        ABE_GATEHUB_SESSION_TOKEN_CAPACITY);
+        ABE_GATEHUB_SESSION_TOKEN_CAPACITY,
+        request.session_token);
+    if (rc == ABE_NOT_FOUND) {
+        rc = generate_session_token(
+            slot->info.session_token,
+            ABE_GATEHUB_SESSION_TOKEN_CAPACITY);
+    }
     if (rc != ABE_OK) {
         ABE_LOG_ERROR(
-            "gatehub session token generation failed status=%s",
+            "gatehub session token setup failed status=%s",
             abe_status_name(rc));
         reset_slot(slot);
         return proto::ERROR_CODE_SYSTEM_INTERNAL;
@@ -946,6 +1004,7 @@ int GateHubServer::handle_enter_game(
     proto::PB_SC_ENTER_GAME_RESP* out_response,
     uint64_t now_ms)
 {
+    GateHubSessionInfo session;
     int rc;
 
     if (out_response == NULL) {
@@ -960,9 +1019,29 @@ int GateHubServer::handle_enter_game(
 
     rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
     if (rc == proto::ERROR_CODE_OK) {
-        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+        rc = validate_online_session(
+            registry_,
+            gateway_id,
+            connection_id,
+            request.uid(),
+            &session);
+    }
+    if (rc == proto::ERROR_CODE_OK && request.session_token().empty()) {
+        rc = proto::ERROR_CODE_AUTH_FAILED;
+    }
+    if (rc == proto::ERROR_CODE_OK &&
+        !token_equal(request.session_token().c_str(), session.session_token)) {
+        rc = proto::ERROR_CODE_AUTH_FAILED;
+    }
+    if (rc == proto::ERROR_CODE_OK && request.room().room_id() == 0u) {
+        rc = proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
     set_result_status(out_response->mutable_result(), rc);
+    if (rc == proto::ERROR_CODE_OK) {
+        out_response->mutable_room()->CopyFrom(request.room());
+        out_response->set_game_start_time_ms(now_ms);
+        out_response->set_tick_rate(30u);
+    }
     return rc;
 }
 
@@ -973,6 +1052,7 @@ int GateHubServer::handle_leave_game(
     proto::PB_SC_LEAVE_GAME_RESP* out_response,
     uint64_t now_ms)
 {
+    uint64_t uid;
     int rc;
 
     if (out_response == NULL) {
@@ -987,9 +1067,22 @@ int GateHubServer::handle_leave_game(
 
     rc = validate_handler_context(initialized_, gateway_id, connection_id, now_ms);
     if (rc == proto::ERROR_CODE_OK) {
-        rc = proto::ERROR_CODE_SYSTEM_SERVICE_UNAVAILABLE;
+        uid = request.header().uid();
+        rc = validate_online_session(
+            registry_,
+            gateway_id,
+            connection_id,
+            uid,
+            NULL);
+    }
+    if (rc == proto::ERROR_CODE_OK && request.room().room_id() == 0u) {
+        rc = proto::ERROR_CODE_COMMON_INVALID_ARGUMENT;
     }
     set_result_status(out_response->mutable_result(), rc);
+    if (rc == proto::ERROR_CODE_OK) {
+        out_response->mutable_room()->CopyFrom(request.room());
+        out_response->set_reason(request.reason());
+    }
     return rc;
 }
 

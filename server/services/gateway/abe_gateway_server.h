@@ -1,6 +1,7 @@
 #ifndef ABE_SERVICE_GATEWAY_SERVER_H
 #define ABE_SERVICE_GATEWAY_SERVER_H
 
+#include "abe_gateway_backend.h"
 #include "abe_gateway_session.h"
 #include "abe_net_server.h"
 #include "abe_service_runtime.h"
@@ -37,6 +38,8 @@ public:
     virtual int process_message(const abe::service::common::Message& message);
     virtual int update(uint64_t now_ms);
     virtual void close(uint64_t now_ms);
+
+    void set_backend(GatewayBackend* backend);
 
     int on_connect(abe::adapter::net::TcpLink* link, uint64_t now_ms);
     int on_receive(
@@ -96,8 +99,11 @@ private:
 
     GatewayServerConfig config_;
     abe::service::common::MessageQueue* message_queue_;
+    LocalGatewayBackend local_backend_;
+    GatewayBackend* backend_;
     abe::adapter::net::TcpServer tcp_;
     abe::service::session::SessionManager sessions_;
+    int backend_ready_;
     int session_ready_;
     int tcp_ready_;
 };
