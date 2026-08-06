@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "enemies": [
+    {
+      "id": "vein_worm",
+      "name": "灵脉蚀虫",
+      "rank": "normal",
+      "location": "underground_vein",
+      "tags": ["beast", "vein"],
+      "stats": {"hp": 24, "attack": 4, "defense": 0, "speed": 5},
+      "skills": [{"id": "bite", "cooldown": 0, "power": 4}],
+      "loot_tags": ["vein", "common"],
+      "p1_priority": true,
+      "design_note": "P1 无特殊机制的战斗基准。"
+    },
+    {
+      "id": "black_armor_echo",
+      "name": "玄甲残影",
+      "rank": "normal",
+      "location": "taixuan_sect",
+      "tags": ["spirit", "armor"],
+      "stats": {"hp": 32, "attack": 5, "defense": 3, "speed": 3},
+      "skills": [{"id": "guard_stance", "cooldown": 2, "shield": 5}],
+      "loot_tags": ["taixuan", "guard"],
+      "p1_priority": true,
+      "design_note": "验证防御、护盾与破甲。"
+    },
+    {
+      "id": "star_dust_beast",
+      "name": "星尘兽",
+      "rank": "normal",
+      "location": "luoxing_valley",
+      "tags": ["beast", "star_core"],
+      "stats": {"hp": 38, "attack": 7, "defense": 1, "speed": 4},
+      "skills": [{"id": "star_burst", "cooldown": 2, "power": 9}],
+      "loot_tags": ["star_core", "beast"],
+      "p1_priority": true,
+      "design_note": "首批星核掉落来源。"
+    },
+    {
+      "id": "corrupt_taixuan_guard",
+      "name": "蚀化太玄卫",
+      "rank": "normal",
+      "location": "taixuan_sect",
+      "tags": ["human", "taixuan", "corrupted"],
+      "stats": {"hp": 42, "attack": 7, "defense": 2, "speed": 4},
+      "skills": [{"id": "sword_sweep", "cooldown": 2, "power": 8}],
+      "loot_tags": ["taixuan", "identity"],
+      "p1_priority": false,
+      "design_note": "承接太玄宗灭门后的异常线索。"
+    },
+    {
+      "id": "wild_sword_shadow",
+      "name": "荒剑影",
+      "rank": "normal",
+      "location": "huanggu_city",
+      "tags": ["spirit", "sword", "swift"],
+      "stats": {"hp": 30, "attack": 8, "defense": 1, "speed": 7},
+      "skills": [{"id": "first_cut", "cooldown": 3, "power": 10}],
+      "loot_tags": ["sword", "spirit"],
+      "p1_priority": false,
+      "design_note": "高速度敌人，用于检验先手构筑。"
+    },
+    {
+      "id": "spirit_thief",
+      "name": "窃灵客",
+      "rank": "normal",
+      "location": "huanggu_city",
+      "tags": ["human", "resource_drain"],
+      "stats": {"hp": 34, "attack": 6, "defense": 1, "speed": 6},
+      "skills": [{"id": "steal_spirit", "cooldown": 2, "power": 4, "spirit_drain": 2}],
+      "loot_tags": ["talisman", "city"],
+      "p1_priority": false,
+      "design_note": "让玩家感知灵气代价的压力。"
+    },
+    {
+      "id": "array_guardian_puppet",
+      "name": "守阵傀儡",
+      "rank": "elite",
+      "location": "underground_vein",
+      "tags": ["construct", "array", "armor"],
+      "stats": {"hp": 82, "attack": 9, "defense": 5, "speed": 2},
+      "skills": [{"id": "array_barrier", "cooldown": 3, "shield": 12}, {"id": "ground_pulse", "cooldown": 2, "power": 8}],
+      "loot_tags": ["array", "vein", "uncommon"],
+      "p1_priority": true,
+      "design_note": "首个双技能精英，强调破甲窗口。"
+    },
+    {
+      "id": "identity_plate_hunter",
+      "name": "夺牌人",
+      "rank": "elite",
+      "location": "huanggu_city",
+      "tags": ["human", "identity", "marked"],
+      "stats": {"hp": 70, "attack": 11, "defense": 2, "speed": 7},
+      "skills": [{"id": "mark_preload", "cooldown": 3, "power": 6}, {"id": "execute_mark", "cooldown": 3, "power": 14}],
+      "loot_tags": ["identity", "clue", "rare"],
+      "p1_priority": false,
+      "design_note": "荒古城调查线精英，掉落替身身份线索。"
+    },
+    {
+      "id": "star_core_corrupted_beast",
+      "name": "星核蚀兽",
+      "rank": "boss",
+      "location": "luoxing_valley",
+      "tags": ["beast", "star_core", "corrupted", "boss"],
+      "stats": {"hp": 180, "attack": 14, "defense": 4, "speed": 5},
+      "skills": [{"id": "core_resonance", "cooldown": 3, "power": 10}, {"id": "mirror_last_rule", "cooldown": 4, "power_ratio": 0.7}, {"id": "corrupt_cell", "cooldown": 3, "polluted_cells": 1}],
+      "loot_tags": ["star_core", "boss", "rare"],
+      "p1_priority": true,
+      "design_note": "P1 重点验证复现玩家最后一次规则联动，污染背包格只做单格演示。"
+    }
+  ]
+}

@@ -14,7 +14,23 @@ client/
 ├── config/       客户端运行配置和本地配置模板
 ├── data/         静态表、关卡数据和本地化文本
 ├── scenes/       Godot 场景文件（.tscn）
+│   ├── main/     主流程与入口场景
+│   ├── ui/       背包、日志、结算等界面场景
+│   ├── combat/   战斗角色、战场和表现节点
+│   ├── explore/  节点探索与路线场景
+│   └── story/    剧情演出场景
 ├── scripts/      GDScript 脚本（.gd）
+│   ├── core/     启动、事件和通用运行时
+│   ├── data/     JSON 加载、校验和静态数据模型
+│   ├── ui/       界面逻辑与交互
+│   ├── combat/   战斗模拟、规则执行和日志
+│   ├── explore/  探索节点与路线状态
+│   ├── save/     存档与版本迁移
+│   ├── progression/ 角色成长和解锁
+│   ├── story/    剧情条件与效果
+│   ├── character/ 角色运行时数据
+│   └── tools/    仅开发环境使用的调试工具
+├── tools/        客户端数据转换和离线开发工具
 ├── docs/         游戏策划案、系统设计和美术规范
 ├── build/        本地构建/导出产物，不提交版本库
 ├── project.godot Godot 项目入口配置
@@ -29,6 +45,7 @@ client/
 4. 构建和导出输出统一放到 `build/`，不要提交生成文件。
 5. Godot 导入缓存 `.godot/` 保持在客户端根目录，并由 `.gitignore` 忽略。
 6. 资源引用使用 `res://` 路径，移动资源后同步检查场景、脚本和 `project.godot` 的引用。
+7. Excel 等离线数据转换脚本放到 `tools/`；运行时 GDScript 调试功能仍放到 `scripts/tools/`。
 
 ## 更新方式
 

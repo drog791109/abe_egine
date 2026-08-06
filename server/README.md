@@ -1,6 +1,6 @@
 # Server 目录结构
 
-`server/` 是服务端源码根目录。目录按“基础设施、共享能力、服务进程、协议定义”分层。下面的箭头表示“右侧可以依赖左侧”：
+`server/` 是服务端源码根目录，包含基础设施和服务进程。客户端与服务端共享的协议定义位于仓库根级 `share/`。下面的箭头表示“右侧可以依赖左侧”：
 
 ```text
 engine/base -> engine/common -> engine/adapters -> services
@@ -12,16 +12,17 @@ proto definitions ------------------------------> common/services
 ## 目录职责
 
 ```text
-server/
-  engine/
-    src/
-      base/       基础设施，C API 优先，公开头保持 C ABI 和 C++03 兼容
-      common/     稳定的共享 C 接口与跨服务基础能力，例如 ID、RPC、服务发现、DB 抽象
-      log/        原生 C++ 日志封装，提供简洁的 C++11 接口和日志宏
-      backends/   common/base 接口的具体实现，隔离 MySQL C API 等原始第三方接口
-      adapters/   将 base/common 的 C 接口适配为不高于 C++11 的简单 RAII 和类接口
-  services/       可独立启动的服务进程入口和组装层
-  share/proto/    协议定义源文件，分为 client 和 internal
+abe_engine/
+  server/
+    engine/
+      src/
+        base/       基础设施，C API 优先，公开头保持 C ABI 和 C++03 兼容
+        common/     稳定的共享 C 接口与跨服务基础能力，例如 ID、RPC、服务发现、DB 抽象
+        log/        原生 C++ 日志封装，提供简洁的 C++11 接口和日志宏
+        backends/   common/base 接口的具体实现，隔离 MySQL C API 等原始第三方接口
+        adapters/   将 base/common 的 C 接口适配为不高于 C++11 的简单 RAII 和类接口
+    services/       可独立启动的服务进程入口和组装层
+  share/proto/      客户端与服务端共享的协议定义源文件
 ```
 
 ## Engine 接口硬约束
@@ -111,8 +112,8 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 - 原 `server/engine/src/module` 曾统一改名为 `adapters`；现在进一步拆分为 `backends` 和 `adapters`，避免“第三方后端实现”和“C 到 C++ 适配”共用同一个概念。
 - MySQL、Redis、Kafka 和 RabbitMQ 已按新规则放入 `engine/src/backends`，spdlog 已按新规则位于 `engine/src/log`。
 - 后续新增的 C++ 包装只放入 `engine/src/adapters`，编译标准不高于 C++11，且不在公共接口中暴露 STL，例如基于 `abe_db_t` 的数据库 RAII 接口。
-- `server/share/proto` 保持在 engine 外部，避免游戏协议定义被误认为引擎基础设施的一部分。
-- gateway 之类的 service 只消费 `server/share/proto` 的协议定义，不在 service 代码里重复定义协议号和消息结构。
+- `share/proto` 位于 `server` 和 `client` 的同级目录，避免游戏协议定义被误认为服务端引擎基础设施。
+- gateway 之类的 service 只消费 `share/proto` 的协议定义，不在 service 代码里重复定义协议号和消息结构。
 
 ## Service Runtime 约定
 
@@ -139,7 +140,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 
 玩家持久化数据按“固定查询列 + protobuf blob”落库：
 
-- `server/share/proto/store/player_store.proto` 是账号、玩家、背包、任务、邮件的唯一完整数据结构定义；玩家 protobuf 统一使用 `PB_PLAYER_*` 命名。
+- `share/proto/store/player_store.proto` 是账号、玩家、背包、任务、邮件的唯一完整数据结构定义；玩家 protobuf 统一使用 `PB_PLAYER_*` 命名。
 - MySQL 表结构放在 `deploy/sql/mysql/001_player_store.sql`，当前包含 `account_data`、`player_data`、`bag_data`、`task_data`、`mail_data`。当前数据库尚未投入数据，直接以该脚本创建新表；后续已投入数据的表结构变更须新增版本化迁移脚本。
 - 每张表只展开业务查询、排序、分片或排障常用的固定列，例如 `uid`、`account_id`、`state`、`level`、`send_time_ms`、计数和版本字段。
 - 完整业务数据统一写入 `data_blob`，内容是对应的 `PB_*_DATA` protobuf 二进制。

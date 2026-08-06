@@ -657,9 +657,11 @@ server/
     session/
     settlement/
     game/
+share/
   proto/
     client/
     internal/
+    store/
 deploy/
   docker/
   k8s/
@@ -680,7 +682,7 @@ doc/
 - `server/engine/src/adapters`：将 `base/common` C 接口适配为不高于 C++11 的简单 RAII 和类接口；不承载具体后端，公共接口不暴露 STL，也不得要求 C++14+。
 - 独立逻辑层已移除：公共服务组件放入 `services/common`，具体业务编排放入对应服务模块。
 - `server/services`：可独立启动的服务进程入口和组装层，例如 Gateway、Lobby、Coordinator、Match、Session、Settlement；负责选择并链接具体后端。
-- `server/share/proto`：协议定义源文件。`client` 面向客户端协议，`internal` 面向服务间协议；生成代码后续可按语言和构建系统单独放入生成目录。
+- `share/proto`：位于 `server` 和 `client` 的同级目录，保存协议定义源文件。`client` 面向客户端协议，`internal` 面向服务间协议，`store` 面向服务端持久化结构；生成代码按语言和构建系统放入各自构建目录。
 
 当前仓库中的 MySQL、Redis、RabbitMQ、Kafka 具体后端已按新规则放入 `engine/src/backends`；spdlog 已按新规则迁入 `engine/src/log`。后续新增具体后端继续放入 `backends`，只向外暴露项目自己的 C 接口。
 

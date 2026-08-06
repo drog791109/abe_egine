@@ -12,7 +12,9 @@ abe_engine/
   deploy/          本地和线上部署资产
   doc/             架构、环境、目录和工程约束文档
   scripts/         当前环境内运行的项目命令脚本
+  client/          Godot 客户端工程和客户端资源
   server/          服务端源码
+  share/           客户端与服务端共享的稳定契约源文件
   test/            单元、集成、压测测试
 ```
 
@@ -43,7 +45,9 @@ share/proto ------------------------------------> common/services
 | `deploy/` | Docker、Kubernetes、systemd 等部署资产。 | 游戏逻辑、engine 实现、当前环境内的项目命令脚本。 | 按部署形态拆子目录，脚本只做环境和部署编排管理。 |
 | `doc/` | 架构设计、开发环境、目录职责、工程决策。 | 可执行源码、生成代码、大型二进制资产。 | 新增设计说明、ADR、目录契约和运维手册。 |
 | `scripts/` | 当前环境内运行的项目命令脚本，例如编译、测试、服务起停。 | Docker/Compose 环境控制、容器创建、部署编排模板。 | 后续新增服务时扩展 `services_start.sh` / `services_stop.sh` 的服务表。 |
-| `server/` | 服务端工程源码根目录。 | 测试工程、部署编排、长期架构文档。 | 按 `engine/services/share` 分层补全。 |
+| `client/` | Godot 客户端工程、资源、数据和客户端工具。 | 服务端实现和服务端部署配置。 | 按客户端目录规则扩展场景、脚本和资源。 |
+| `server/` | 服务端工程源码根目录。 | 共享协议源文件、测试工程、部署编排、长期架构文档。 | 按 `engine/services` 分层补全。 |
+| `share/` | 客户端与服务端共享的协议和稳定契约源文件。 | 生成代码、服务实现、客户端运行时逻辑。 | 按契约类型扩展 `proto` 子目录。 |
 | `test/` | 单元、集成、压测测试。 | 生产入口、真实部署配置。 | 与源码目录镜像对应，按风险补覆盖。 |
 
 ## 3. Codex 配置目录
@@ -83,8 +87,9 @@ share/proto ------------------------------------> common/services
 server/
   engine/       基础设施和共享能力
   services/     进程入口和依赖装配
-  share/proto/  协议定义
 ```
+
+客户端与服务端共享的协议位于根级 `share/proto/`，不属于服务端源码目录。
 
 ### 6.1 `server/engine`
 
@@ -181,7 +186,9 @@ adapter 公共接口不得暴露 STL 容器、`std::function`、智能指针或�
 
 服务目录可以依赖具体 `engine/backends`，但这种依赖应停留在装配层，不能倒灌到 `engine/base` 或 `engine/common`。
 
-### 6.4 `server/share/proto`
+## 7. 根级共享协议目录
+
+`share/proto` 与 `server`、`client` 同级，保存双方共同消费的协议源文件。
 
 | 路径 | 放什么 | 不放什么 | 后续补全方向 |
 | --- | --- | --- | --- |
@@ -192,7 +199,7 @@ adapter 公共接口不得暴露 STL 容器、`std::function`、智能指针或�
 生成代码应放入构建输出目录或明确的 generated 目录，不直接手改生成文件。
 当前客户端 proto 通过 `share/proto/client` 下的 `abe_proto_client` target 生成 C++ 代码；上层逻辑错误码以 `protocol.proto` 的 `ErrorCode` 为唯一来源。
 
-## 7. 测试目录
+## 8. 测试目录
 
 ```text
 test/
@@ -214,7 +221,7 @@ test/
 
 新增测试优先放到与源码层级对应的目录。能用单元测试覆盖的行为，不放到集成测试里才验证。
 
-## 8. 后续新增文件规则
+## 9. 后续新增文件规则
 
 1. 先判断文件属于“基础设施、共享契约、后端实现、C++ 适配、业务逻辑、服务进程、协议、测试、部署、文档”哪一类。
 2. 基础设施和共享契约优先进入 `server/engine/src/base` 或 `server/engine/src/common`，公共接口保持 C/C++11 兼容。
@@ -222,7 +229,7 @@ test/
 4. C API 的 C++ 便利封装进入 `server/engine/src/adapters`，不要在 adapter 中实现具体后端。
 5. 业务状态机、规则、数据流转进入对应 `server/services/<name>` 模块；跨服务复用的小组件进入 `server/services/common`。
 6. 进程入口、配置加载、服务间 handler 和真实后端装配进入 `server/services`。
-7. 协议定义进入 `server/share/proto/client` 或 `server/share/proto/internal`，按可见范围区分。
+7. 协议定义进入根级 `share/proto/client`、`share/proto/internal` 或 `share/proto/store`，按可见范围和用途区分。
 8. 基础设施错误码进入 `server/engine/src/base/error`，模块状态名只做别名；客户端可见和业务逻辑错误码进入 proto 的 `ErrorCode`。
 9. 单测跟随源码目录镜像放入 `test/unit`；真实外部依赖和跨进程测试放入 `test/integration`；容量验证放入 `test/load`。
 10. 普通源码、配置和文档默认 `0644`；只有明确可执行脚本才设置 `0755`。
