@@ -53,7 +53,7 @@
 转换指定工作表，并覆盖已有数据文件：
 
 ```bash
-python3 client/tools/excel_to_json.py design/items.xlsx \
+python3 tools/excel_to_json.py design/items.xlsx \
   --sheet items \
   --root-key items \
   --header-row 4 \
@@ -67,7 +67,7 @@ python3 client/tools/excel_to_json.py design/items.xlsx \
 转换工作簿内所有可见工作表：
 
 ```bash
-python3 client/tools/excel_to_json.py design/game_data.xlsx \
+python3 tools/excel_to_json.py design/game_data.xlsx \
   --all-sheets \
   --output client/data/game_data.json
 ```
@@ -75,7 +75,7 @@ python3 client/tools/excel_to_json.py design/game_data.xlsx \
 合并根级配置工作表并转换主数据表：
 
 ```bash
-python3 client/tools/excel_to_json.py share/tables/explore_nodes.xlsx \
+python3 tools/excel_to_json.py share/tables/explore_nodes.xlsx \
   --sheet nodes \
   --document-sheet document \
   --root-key nodes \
@@ -90,7 +90,7 @@ python3 client/tools/excel_to_json.py share/tables/explore_nodes.xlsx \
 先输出到终端检查，不写文件：
 
 ```bash
-python3 client/tools/excel_to_json.py design/rules.xlsx \
+python3 tools/excel_to_json.py design/rules.xlsx \
   --sheet rules \
   --root-key rules \
   --output -

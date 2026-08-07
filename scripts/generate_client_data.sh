@@ -34,7 +34,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
-TOOL="${REPO_ROOT}/client/tools/excel_to_json.py"
+TOOL="${REPO_ROOT}/tools/excel_to_json.py"
 TABLE_DIR="${REPO_ROOT}/share/tables"
 CLIENT_OUTPUT_DIR="${REPO_ROOT}/client/data"
 SERVER_OUTPUT_DIR="${REPO_ROOT}/server/data"

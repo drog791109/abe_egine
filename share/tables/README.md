@@ -1,6 +1,6 @@
 # 共享数据表
 
-本目录保存策划可编辑的 Excel 源表。客户端和服务端运行时不直接读取 Excel，发布数据由 `client/tools/excel_to_json.py` 按字段归属分别转换到 `client/data/` 和 `server/data/`。
+本目录保存策划可编辑的 Excel 源表。客户端和服务端运行时不直接读取 Excel，发布数据由 `tools/excel_to_json.py` 按字段归属分别转换到 `client/data/` 和 `server/data/`。
 
 ## 数据源映射
 
@@ -25,7 +25,7 @@
 单独生成某一份数据时使用下面的转换命令：
 
 ```bash
-python3 client/tools/excel_to_json.py share/tables/items.xlsx \
+python3 tools/excel_to_json.py share/tables/items.xlsx \
   --sheet items \
   --root-key items \
   --header-row 4 \
@@ -39,17 +39,17 @@ python3 client/tools/excel_to_json.py share/tables/items.xlsx \
 其他普通数据表使用相同的行号约定：
 
 ```bash
-python3 client/tools/excel_to_json.py share/tables/rules.xlsx \
+python3 tools/excel_to_json.py share/tables/rules.xlsx \
   --sheet rules --root-key rules --header-row 4 --data-row 5 \
   --scope-row 2 --target client \
   --output client/data/rules.json --force
 
-python3 client/tools/excel_to_json.py share/tables/enemies.xlsx \
+python3 tools/excel_to_json.py share/tables/enemies.xlsx \
   --sheet enemies --root-key enemies --header-row 4 --data-row 5 \
   --scope-row 2 --target client \
   --output client/data/enemies.json --force
 
-python3 client/tools/excel_to_json.py share/tables/story_nodes.xlsx \
+python3 tools/excel_to_json.py share/tables/story_nodes.xlsx \
   --sheet story_nodes --root-key story_nodes --header-row 4 --data-row 5 \
   --scope-row 2 --target client \
   --output client/data/story_nodes.json --force
@@ -58,7 +58,7 @@ python3 client/tools/excel_to_json.py share/tables/story_nodes.xlsx \
 探索节点除 `nodes` 数据表外，还使用 `document` 工作表保存根级的起始节点和 P1 路线：
 
 ```bash
-python3 client/tools/excel_to_json.py share/tables/explore_nodes.xlsx \
+python3 tools/excel_to_json.py share/tables/explore_nodes.xlsx \
   --sheet nodes \
   --document-sheet document \
   --root-key nodes \

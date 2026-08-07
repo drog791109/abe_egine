@@ -30,7 +30,6 @@ client/
 │   ├── story/    剧情条件与效果
 │   ├── character/ 角色运行时数据
 │   └── tools/    仅开发环境使用的调试工具
-├── tools/        客户端数据转换和离线开发工具
 ├── docs/         游戏策划案、系统设计和美术规范
 ├── build/        本地构建/导出产物，不提交版本库
 ├── project.godot Godot 项目入口配置
@@ -45,7 +44,7 @@ client/
 4. 构建和导出输出统一放到 `build/`，不要提交生成文件。
 5. Godot 导入缓存 `.godot/` 保持在客户端根目录，并由 `.gitignore` 忽略。
 6. 资源引用使用 `res://` 路径，移动资源后同步检查场景、脚本和 `project.godot` 的引用。
-7. Excel 等离线数据转换脚本放到 `tools/`；运行时 GDScript 调试功能仍放到 `scripts/tools/`。
+7. 客户端与服务端共享的 Excel 等离线数据转换脚本放到仓库根级 `tools/`；运行时 GDScript 调试功能仍放到 `scripts/tools/`。
 
 ## 更新方式
 

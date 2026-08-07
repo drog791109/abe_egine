@@ -2,7 +2,7 @@
 """Convert an Excel workbook into filtered UTF-8 runtime JSON.
 
 Usage:
-    python3 client/tools/excel_to_json.py INPUT [options]
+    python3 tools/excel_to_json.py INPUT [options]
 
 Parameters:
     INPUT                       Source workbook. Must be an existing .xlsx or
@@ -43,16 +43,16 @@ Environment variables:
     None.
 
 Examples:
-    python3 client/tools/excel_to_json.py design/items.xlsx \
+    python3 tools/excel_to_json.py design/items.xlsx \
         --sheet items --root-key items --header-row 4 --data-row 5 \
         --scope-row 2 --target client \
         -o client/data/items.json --force
-    python3 client/tools/excel_to_json.py design/game_data.xlsx \
+    python3 tools/excel_to_json.py design/game_data.xlsx \
         --all-sheets -o client/data/game_data.json
-    python3 client/tools/excel_to_json.py design/explore_nodes.xlsx \
+    python3 tools/excel_to_json.py design/explore_nodes.xlsx \
         --sheet nodes --document-sheet document --root-key nodes \
         --header-row 4 --data-row 5 -o client/data/explore_nodes.json --force
-    python3 client/tools/excel_to_json.py design/rules.xlsx \
+    python3 tools/excel_to_json.py design/rules.xlsx \
         --sheet rules --root-key rules --output -
 """
 

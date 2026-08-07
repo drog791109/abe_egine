@@ -36,4 +36,4 @@
 
 P1 不允许在场景脚本中复制这些数值；灰盒调整应直接修改 JSON，并重新加载配置。
 
-策划 Excel 表位于 [`share/tables/`](../../share/tables/README.md)，可使用 [`client/tools/excel_to_json.py`](../tools/excel_to_json.py) 转换；第 2 行归属为 `client` 或 `both` 的字段进入本目录，`server` 或 `both` 的字段进入 `server/data/`。各 JSON 的源表映射、表头约定和生成命令见共享数据表说明。
+策划 Excel 表位于 [`share/tables/`](../../share/tables/README.md)，可使用 [`tools/excel_to_json.py`](../../tools/excel_to_json.py) 转换；第 2 行归属为 `client` 或 `both` 的字段进入本目录，`server` 或 `both` 的字段进入 `server/data/`。各 JSON 的源表映射、表头约定和生成命令见共享数据表说明。
