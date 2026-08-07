@@ -6,10 +6,27 @@
       "name": "断锋",
       "category": "weapon",
       "rarity": "common",
-      "shape": [[0, 0], [1, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
       "rotatable": true,
-      "tags": ["sword", "physical"],
-      "base_effects": [{"type": "attack", "value": 4}],
+      "tags": [
+        "sword",
+        "physical"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 4
+        }
+      ],
       "source_stage": "P1",
       "source_location": "underground_vein",
       "design_note": "P1 基础攻击道具，用于验证多格占位和旋转。"
@@ -19,10 +36,31 @@
       "name": "桃木剑",
       "category": "weapon",
       "rarity": "common",
-      "shape": [[0, 0], [0, 1]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
       "rotatable": true,
-      "tags": ["sword", "spirit"],
-      "base_effects": [{"type": "attack", "value": 3}, {"type": "spirit_damage", "value": 2}],
+      "tags": [
+        "sword",
+        "spirit"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 3
+        },
+        {
+          "type": "spirit_damage",
+          "value": 2
+        }
+      ],
       "source_stage": "P1",
       "source_location": "taixuan_sect",
       "design_note": "用于比较物理攻击与灵性伤害。"
@@ -32,10 +70,36 @@
       "name": "精铁剑",
       "category": "weapon",
       "rarity": "uncommon",
-      "shape": [[0, 0], [0, 1], [0, 2]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ],
       "rotatable": true,
-      "tags": ["sword", "physical", "heavy"],
-      "base_effects": [{"type": "attack", "value": 8}, {"type": "speed", "value": -1}],
+      "tags": [
+        "sword",
+        "physical",
+        "heavy"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 8
+        },
+        {
+          "type": "speed",
+          "value": -1
+        }
+      ],
       "source_stage": "P1",
       "source_location": "huanggu_city",
       "design_note": "用较长占格换取直接攻击收益。"
@@ -45,10 +109,28 @@
       "name": "星砂匕",
       "category": "weapon",
       "rarity": "uncommon",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["blade", "star_core", "swift"],
-      "base_effects": [{"type": "attack", "value": 5}, {"type": "first_strike", "value": 2}],
+      "tags": [
+        "blade",
+        "star_core",
+        "swift"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 5
+        },
+        {
+          "type": "first_strike",
+          "value": 2
+        }
+      ],
       "source_stage": "P1",
       "source_location": "luoxing_valley",
       "design_note": "单格高效率武器，承接星核转化规则。"
@@ -58,10 +140,31 @@
       "name": "破甲锥",
       "category": "weapon",
       "rarity": "uncommon",
-      "shape": [[0, 0], [1, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
       "rotatable": true,
-      "tags": ["physical", "armor_break"],
-      "base_effects": [{"type": "attack", "value": 3}, {"type": "apply_armor_break", "value": 1}],
+      "tags": [
+        "physical",
+        "armor_break"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 3
+        },
+        {
+          "type": "apply_armor_break",
+          "value": 1
+        }
+      ],
       "source_stage": "P1",
       "source_location": "underground_vein",
       "design_note": "为破甲条件规则提供稳定入口。"
@@ -71,10 +174,36 @@
       "name": "太玄令刃",
       "category": "weapon",
       "rarity": "rare",
-      "shape": [[0, 0], [1, 0], [1, 1]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
       "rotatable": true,
-      "tags": ["sword", "taixuan", "identity"],
-      "base_effects": [{"type": "attack", "value": 10}, {"type": "rule_power", "value": 1}],
+      "tags": [
+        "sword",
+        "taixuan",
+        "identity"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 10
+        },
+        {
+          "type": "rule_power",
+          "value": 1
+        }
+      ],
       "source_stage": "P2",
       "source_location": "taixuan_sect",
       "design_note": "剧情身份与规则强度相连的稀有武器。"
@@ -84,10 +213,36 @@
       "name": "风雷短枪",
       "category": "weapon",
       "rarity": "rare",
-      "shape": [[0, 0], [1, 0], [2, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
       "rotatable": true,
-      "tags": ["spear", "thunder", "chain"],
-      "base_effects": [{"type": "attack", "value": 9}, {"type": "chain_damage", "value": 3}],
+      "tags": [
+        "spear",
+        "thunder",
+        "chain"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 9
+        },
+        {
+          "type": "chain_damage",
+          "value": 3
+        }
+      ],
       "source_stage": "P2",
       "source_location": "huanggu_city",
       "design_note": "与雷符连锁构筑配合。"
@@ -97,10 +252,23 @@
       "name": "聚灵符",
       "category": "talisman",
       "rarity": "common",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["spirit", "resource"],
-      "base_effects": [{"type": "spirit_gain", "value": 2}],
+      "tags": [
+        "spirit",
+        "resource"
+      ],
+      "base_effects": [
+        {
+          "type": "spirit_gain",
+          "value": 2
+        }
+      ],
       "source_stage": "P1",
       "source_location": "taixuan_sect",
       "design_note": "P1 资源生成基准道具。"
@@ -110,10 +278,27 @@
       "name": "引雷符",
       "category": "talisman",
       "rarity": "uncommon",
-      "shape": [[0, 0], [0, 1]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
       "rotatable": true,
-      "tags": ["thunder", "chain"],
-      "base_effects": [{"type": "thunder_damage", "value": 6}],
+      "tags": [
+        "thunder",
+        "chain"
+      ],
+      "base_effects": [
+        {
+          "type": "thunder_damage",
+          "value": 6
+        }
+      ],
       "source_stage": "P1",
       "source_location": "huanggu_city",
       "design_note": "用于验证同类相邻和符箓连锁。"
@@ -123,10 +308,23 @@
       "name": "护身符",
       "category": "talisman",
       "rarity": "common",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["guard", "shield"],
-      "base_effects": [{"type": "shield", "value": 5}],
+      "tags": [
+        "guard",
+        "shield"
+      ],
+      "base_effects": [
+        {
+          "type": "shield",
+          "value": 5
+        }
+      ],
       "source_stage": "P1",
       "source_location": "underground_vein",
       "design_note": "承接受伤与护盾规则。"
@@ -136,10 +334,31 @@
       "name": "连环符",
       "category": "talisman",
       "rarity": "uncommon",
-      "shape": [[0, 0], [1, 0], [0, 1]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
       "rotatable": true,
-      "tags": ["chain", "modifier"],
-      "base_effects": [{"type": "trigger_count", "value": 1}],
+      "tags": [
+        "chain",
+        "modifier"
+      ],
+      "base_effects": [
+        {
+          "type": "trigger_count",
+          "value": 1
+        }
+      ],
       "source_stage": "P1",
       "source_location": "huanggu_city",
       "design_note": "扩大相邻符箓的触发次数。"
@@ -149,10 +368,23 @@
       "name": "寻痕符",
       "category": "talisman",
       "rarity": "common",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["mark", "explore"],
-      "base_effects": [{"type": "loot_mark", "value": 1}],
+      "tags": [
+        "mark",
+        "explore"
+      ],
+      "base_effects": [
+        {
+          "type": "loot_mark",
+          "value": 1
+        }
+      ],
       "source_stage": "P2",
       "source_location": "huanggu_city",
       "design_note": "连接战斗掉落与探索调查。"
@@ -162,10 +394,27 @@
       "name": "镇封符",
       "category": "talisman",
       "rarity": "rare",
-      "shape": [[0, 0], [1, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
       "rotatable": true,
-      "tags": ["control", "seal"],
-      "base_effects": [{"type": "stun", "value": 1}],
+      "tags": [
+        "control",
+        "seal"
+      ],
+      "base_effects": [
+        {
+          "type": "stun",
+          "value": 1
+        }
+      ],
       "source_stage": "P2",
       "source_location": "luoxing_valley",
       "design_note": "控制高威胁敌人的稀有符箓。"
@@ -175,10 +424,23 @@
       "name": "回春丹",
       "category": "pill",
       "rarity": "common",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["healing", "consumable"],
-      "base_effects": [{"type": "heal", "value": 8}],
+      "tags": [
+        "healing",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "heal",
+          "value": 8
+        }
+      ],
       "source_stage": "P1",
       "source_location": "underground_vein",
       "design_note": "P1 恢复与丹药触发基准。"
@@ -188,10 +450,23 @@
       "name": "凝气丹",
       "category": "pill",
       "rarity": "common",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["spirit", "consumable"],
-      "base_effects": [{"type": "spirit_gain", "value": 4}],
+      "tags": [
+        "spirit",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "spirit_gain",
+          "value": 4
+        }
+      ],
       "source_stage": "P1",
       "source_location": "taixuan_sect",
       "design_note": "支持以灵气作为规则代价。"
@@ -201,10 +476,23 @@
       "name": "破障散",
       "category": "pill",
       "rarity": "uncommon",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["armor_break", "consumable"],
-      "base_effects": [{"type": "armor_break_power", "value": 2}],
+      "tags": [
+        "armor_break",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "armor_break_power",
+          "value": 2
+        }
+      ],
       "source_stage": "P1",
       "source_location": "huanggu_city",
       "design_note": "强化破甲窗口。"
@@ -214,10 +502,29 @@
       "name": "玉露丹",
       "category": "pill",
       "rarity": "uncommon",
-      "shape": [[0, 0], [1, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
       "rotatable": true,
-      "tags": ["healing", "duration", "consumable"],
-      "base_effects": [{"type": "heal_over_time", "value": 3, "duration": 3}],
+      "tags": [
+        "healing",
+        "duration",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "heal_over_time",
+          "value": 3,
+          "duration": 3
+        }
+      ],
       "source_stage": "P2",
       "source_location": "luoxing_valley",
       "design_note": "验证持续效果与持续时间修正。"
@@ -227,10 +534,23 @@
       "name": "温血丹",
       "category": "pill",
       "rarity": "uncommon",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["low_health", "consumable"],
-      "base_effects": [{"type": "attack_when_low_health", "value": 4}],
+      "tags": [
+        "low_health",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "attack_when_low_health",
+          "value": 4
+        }
+      ],
       "source_stage": "P2",
       "source_location": "huanggu_city",
       "design_note": "支持低生命反击构筑。"
@@ -240,9 +560,17 @@
       "name": "星核碎片",
       "category": "material",
       "rarity": "uncommon",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["star_core", "transform"],
+      "tags": [
+        "star_core",
+        "transform"
+      ],
       "base_effects": [],
       "source_stage": "P1",
       "source_location": "luoxing_valley",
@@ -253,10 +581,23 @@
       "name": "灵脉石",
       "category": "material",
       "rarity": "common",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["vein", "spirit"],
-      "base_effects": [{"type": "spirit_capacity", "value": 1}],
+      "tags": [
+        "vein",
+        "spirit"
+      ],
+      "base_effects": [
+        {
+          "type": "spirit_capacity",
+          "value": 1
+        }
+      ],
       "source_stage": "P1",
       "source_location": "underground_vein",
       "design_note": "地下灵脉的基础探索奖励。"
@@ -266,9 +607,21 @@
       "name": "残缺阵纹",
       "category": "material",
       "rarity": "common",
-      "shape": [[0, 0], [1, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
       "rotatable": true,
-      "tags": ["array", "link"],
+      "tags": [
+        "array",
+        "link"
+      ],
       "base_effects": [],
       "source_stage": "P1",
       "source_location": "taixuan_sect",
@@ -279,10 +632,23 @@
       "name": "玄黑鳞",
       "category": "material",
       "rarity": "common",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["beast", "guard"],
-      "base_effects": [{"type": "defense", "value": 1}],
+      "tags": [
+        "beast",
+        "guard"
+      ],
+      "base_effects": [
+        {
+          "type": "defense",
+          "value": 1
+        }
+      ],
       "source_stage": "P1",
       "source_location": "underground_vein",
       "design_note": "灵脉兽掉落，用于防御向组合。"
@@ -292,9 +658,21 @@
       "name": "磨损身份牌",
       "category": "material",
       "rarity": "uncommon",
-      "shape": [[0, 0], [0, 1]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
       "rotatable": true,
-      "tags": ["identity", "clue"],
+      "tags": [
+        "identity",
+        "clue"
+      ],
       "base_effects": [],
       "source_stage": "P2",
       "source_location": "huanggu_city",
@@ -305,10 +683,23 @@
       "name": "青木心屑",
       "category": "material",
       "rarity": "uncommon",
-      "shape": [[0, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
       "rotatable": false,
-      "tags": ["wood", "healing"],
-      "base_effects": [{"type": "healing_power", "value": 1}],
+      "tags": [
+        "wood",
+        "healing"
+      ],
+      "base_effects": [
+        {
+          "type": "healing_power",
+          "value": 1
+        }
+      ],
       "source_stage": "P2",
       "source_location": "luoxing_valley",
       "design_note": "强化恢复类道具。"
@@ -318,10 +709,31 @@
       "name": "劫灰丝",
       "category": "material",
       "rarity": "rare",
-      "shape": [[0, 0], [1, 0], [2, 0]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
       "rotatable": true,
-      "tags": ["pollution", "cost"],
-      "base_effects": [{"type": "rule_power", "value": 2}],
+      "tags": [
+        "pollution",
+        "cost"
+      ],
+      "base_effects": [
+        {
+          "type": "rule_power",
+          "value": 2
+        }
+      ],
       "source_stage": "P2",
       "source_location": "luoxing_valley",
       "design_note": "高收益但会引入污染代价。"
@@ -331,10 +743,35 @@
       "name": "基础阵眼",
       "category": "array",
       "rarity": "common",
-      "shape": [[0, 0], [1, 0], [0, 1], [1, 1]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
       "rotatable": false,
-      "tags": ["array", "link"],
-      "base_effects": [{"type": "adjacent_rule_power", "value": 1}],
+      "tags": [
+        "array",
+        "link"
+      ],
+      "base_effects": [
+        {
+          "type": "adjacent_rule_power",
+          "value": 1
+        }
+      ],
       "source_stage": "P1",
       "source_location": "taixuan_sect",
       "design_note": "P1 相邻关系与四格占位测试道具。"
@@ -344,10 +781,32 @@
       "name": "引灵阵盘",
       "category": "array",
       "rarity": "uncommon",
-      "shape": [[0, 0], [1, 0], [1, 1]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
       "rotatable": true,
-      "tags": ["array", "spirit", "link"],
-      "base_effects": [{"type": "linked_spirit_gain", "value": 1}],
+      "tags": [
+        "array",
+        "spirit",
+        "link"
+      ],
+      "base_effects": [
+        {
+          "type": "linked_spirit_gain",
+          "value": 1
+        }
+      ],
       "source_stage": "P1",
       "source_location": "underground_vein",
       "design_note": "将位置关系转化为灵气收益。"
@@ -357,10 +816,36 @@
       "name": "回响阵盘",
       "category": "array",
       "rarity": "rare",
-      "shape": [[0, 0], [1, 0], [2, 0], [1, 1]],
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
       "rotatable": true,
-      "tags": ["array", "echo", "modifier"],
-      "base_effects": [{"type": "repeat_linked_trigger", "value": 1}],
+      "tags": [
+        "array",
+        "echo",
+        "modifier"
+      ],
+      "base_effects": [
+        {
+          "type": "repeat_linked_trigger",
+          "value": 1
+        }
+      ],
       "source_stage": "P2",
       "source_location": "luoxing_valley",
       "design_note": "高占格、高上限的规则重复器。"

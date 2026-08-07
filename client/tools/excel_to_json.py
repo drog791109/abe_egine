@@ -19,6 +19,9 @@ Parameters:
                                 and must match [a-z][a-z0-9_]*.
     --header-row NUMBER        One-based row containing field names; must be at
                                 least 1 (default: 1).
+    --data-row NUMBER          One-based row containing the first data record;
+                                must be greater than --header-row. Defaults to
+                                the row immediately after the header.
     --schema-version NUMBER    Non-negative schema_version written at the JSON
                                 root (default: 1).
     --indent NUMBER            JSON indentation from 0 through 8 (default: 2).
@@ -33,7 +36,8 @@ Environment variables:
 
 Examples:
     python3 client/tools/excel_to_json.py design/items.xlsx \
-        --sheet items --root-key items -o client/data/items.json --force
+        --sheet items --root-key items --header-row 4 --data-row 5 \
+        -o client/data/items.json --force
     python3 client/tools/excel_to_json.py design/game_data.xlsx \
         --all-sheets -o client/data/game_data.json
     python3 client/tools/excel_to_json.py design/rules.xlsx \
@@ -83,6 +87,7 @@ def parse_arguments(argv):
     parser.add_argument("--all-sheets", action="store_true")
     parser.add_argument("--root-key")
     parser.add_argument("--header-row", type=int, default=1)
+    parser.add_argument("--data-row", type=int)
     parser.add_argument("--schema-version", type=int, default=1)
     parser.add_argument("--indent", type=int, default=2)
     parser.add_argument("--literal-strings", action="store_true")
@@ -95,6 +100,10 @@ def parse_arguments(argv):
         parser.error("--all-sheets cannot be combined with --root-key")
     if args.header_row < 1:
         parser.error("--header-row must be at least 1")
+    if args.data_row is None:
+        args.data_row = args.header_row + 1
+    if args.data_row <= args.header_row:
+        parser.error("--data-row must be greater than --header-row")
     if args.schema_version < 0:
         parser.error("--schema-version must be non-negative")
     if args.indent < 0 or args.indent > 8:
@@ -392,7 +401,9 @@ def assign_nested_value(record, path, value):
     target[path[-1]] = value
 
 
-def convert_sheet(archive, sheet, shared_strings, header_row, literal_strings):
+def convert_sheet(
+    archive, sheet, shared_strings, header_row, data_row, literal_strings
+):
     """Convert one worksheet to a list of row objects."""
     rows = read_sheet_rows(archive, sheet, shared_strings)
     header_values = None
@@ -411,7 +422,7 @@ def convert_sheet(archive, sheet, shared_strings, header_row, literal_strings):
     seen_ids = set()
     has_id_field = any(path == ["id"] for path in headers.values())
     for row_number, values in rows:
-        if row_number <= header_row:
+        if row_number < data_row:
             continue
         active_values = [values.get(column) for column in headers]
         if all(value is None for value in active_values):
@@ -491,6 +502,7 @@ def convert_workbook(input_path, args):
                     sheet,
                     shared_strings,
                     args.header_row,
+                    args.data_row,
                     args.literal_strings,
                 )
                 converted[sheet["title"]] = records

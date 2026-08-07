@@ -662,6 +662,7 @@ share/
     client/
     internal/
     store/
+  tables/
 deploy/
   docker/
   k8s/
@@ -683,6 +684,7 @@ doc/
 - 独立逻辑层已移除：公共服务组件放入 `services/common`，具体业务编排放入对应服务模块。
 - `server/services`：可独立启动的服务进程入口和组装层，例如 Gateway、Lobby、Coordinator、Match、Session、Settlement；负责选择并链接具体后端。
 - `share/proto`：位于 `server` 和 `client` 的同级目录，保存协议定义源文件。`client` 面向客户端协议，`internal` 面向服务间协议，`store` 面向服务端持久化结构；生成代码按语言和构建系统放入各自构建目录。
+- `share/tables`：保存客户端与服务端可共享的策划 Excel 源表；运行时 JSON 由数据工具生成到 `client/data`，不从 Excel 直接加载。
 
 当前仓库中的 MySQL、Redis、RabbitMQ、Kafka 具体后端已按新规则放入 `engine/src/backends`；spdlog 已按新规则迁入 `engine/src/log`。后续新增具体后端继续放入 `backends`，只向外暴露项目自己的 C 接口。
 

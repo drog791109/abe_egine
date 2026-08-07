@@ -36,4 +36,4 @@
 
 P1 不允许在场景脚本中复制这些数值；灰盒调整应直接修改 JSON，并重新加载配置。
 
-策划 Excel 表可使用 [`client/tools/excel_to_json.py`](../tools/excel_to_json.py) 转换；表头、嵌套字段和运行示例见 [`client/tools/README.md`](../tools/README.md)。
+策划 Excel 表可使用 [`client/tools/excel_to_json.py`](../tools/excel_to_json.py) 转换；表头、嵌套字段和运行示例见 [`client/tools/README.md`](../tools/README.md)。当前道具 JSON 的源表是 [`share/tables/items.xlsx`](../../share/tables/items.xlsx)。

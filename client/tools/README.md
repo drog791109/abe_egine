@@ -5,6 +5,8 @@
 ## 表格约定
 
 - 默认第 1 行是字段名，之后每个非空行输出一个 JSON 对象。
+- 表头后存在字段说明、归属或类型行时，使用 `--data-row` 指定第一条数据所在行。
+- 元数据行应与字段名逐列对齐，不需要额外的行名或说明列。
 - 字段名使用 `snake_case`。使用 `stats.hp` 这样的点路径可以生成嵌套对象。
 - 空单元格输出为 `null`，整行为空时跳过。
 - 表头为空或以 `#` 开头的列会被忽略。
@@ -44,6 +46,8 @@
 python3 client/tools/excel_to_json.py design/items.xlsx \
   --sheet items \
   --root-key items \
+  --header-row 4 \
+  --data-row 5 \
   --output client/data/items.json \
   --force
 ```
