@@ -17,13 +17,10 @@
 # Defaults:
 #   service    login gatehub gateway
 #   RUN_DIR    server/bin/run
-#   OUT_DIR    server/bin/logs
 #
 # Environment:
 #   GATEWAY_BIN       Gateway binary path. Default: server/bin/abe_gateway
 #   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
-#   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: ${OUT_DIR}/gateway/stdout.log
-#   GATEWAY_LOG_DIR   Gateway daily log root. Default: ${OUT_DIR}/gateway
 #   LOGIN_BIN         Login binary path. Default: server/bin/abe_login
 #   GATEHUB_BIN       Gatehub binary path. Default: server/bin/abe_gatehub
 #
@@ -50,13 +47,10 @@ Services:
 Defaults:
   service    login gatehub gateway
   RUN_DIR    server/bin/run
-  OUT_DIR    server/bin/logs
 
 Environment:
   GATEWAY_BIN       Gateway binary path. Default: server/bin/abe_gateway
   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
-  GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: ${OUT_DIR}/gateway/stdout.log
-  GATEWAY_LOG_DIR   Gateway daily log root. Default: ${OUT_DIR}/gateway
   LOGIN_BIN         Login binary path. Default: server/bin/abe_login
   GATEHUB_BIN       Gatehub binary path. Default: server/bin/abe_gatehub
 
@@ -155,15 +149,14 @@ write_pid_file() {
 }
 
 start_runtime_service() {
-  local service service_key binary_var pid_file_var out_file_var
-  local default_config binary config run_dir out_dir pid_file out_file
+  local service service_key binary_var pid_file_var
+  local default_config binary config run_dir pid_file
   local pid state
 
   service=$1
   service_key=$(printf '%s' "${service}" | tr '[:lower:]' '[:upper:]')
   binary_var=${service_key}_BIN
   pid_file_var=${service_key}_PID_FILE
-  out_file_var=${service_key}_OUT_FILE
 
   default_config=server/bin/${service}.json
   if [ "${service}" = "gateway" ]; then
@@ -173,11 +166,9 @@ start_runtime_service() {
   binary=${!binary_var:-server/bin/abe_${service}}
   config=${default_config}
   run_dir=${RUN_DIR:-server/bin/run}
-  out_dir=${OUT_DIR:-server/bin/logs}
   pid_file=${!pid_file_var:-${run_dir}/${service}.pid}
-  out_file=${!out_file_var:-${out_dir}/${service}/stdout.log}
 
-  mkdir -p "$(dirname "${pid_file}")" "$(dirname "${out_file}")"
+  mkdir -p "$(dirname "${pid_file}")"
 
   if [ ! -x "${binary}" ]; then
     echo "${service} binary not found: ${binary}" >&2
@@ -196,15 +187,14 @@ start_runtime_service() {
     return 0
   fi
 
-  nohup "${binary}" >"${out_file}" 2>&1 &
+  nohup "${binary}" >/dev/null 2>&1 &
   pid=$!
   sleep 1
 
   state=$(process_state "${pid}")
   if [ -z "${state}" ] || [ "${state#Z}" != "${state}" ]; then
     rm -f "${pid_file}"
-    echo "${service} failed to stay running; log=${out_file}" >&2
-    tail -40 "${out_file}" >&2 2>/dev/null || true
+    echo "${service} failed to stay running" >&2
     exit 1
   fi
 

@@ -20,8 +20,6 @@
 #
 # Environment:
 #   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
-#   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: server/bin/logs/gateway/stdout.log
-#   GATEWAY_LOG_DIR   Gateway daily log root. Default: server/bin/logs/gateway
 #   LOGIN_PID_FILE    Login pid file. Default: ${RUN_DIR}/login.pid
 #   GATEHUB_PID_FILE  Gatehub pid file. Default: ${RUN_DIR}/gatehub.pid
 #
@@ -52,8 +50,6 @@ Defaults:
 
 Environment:
   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
-  GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: server/bin/logs/gateway/stdout.log
-  GATEWAY_LOG_DIR   Gateway daily log root. Default: server/bin/logs/gateway
   LOGIN_PID_FILE    Login pid file. Default: ${RUN_DIR}/login.pid
   GATEHUB_PID_FILE  Gatehub pid file. Default: ${RUN_DIR}/gatehub.pid
 

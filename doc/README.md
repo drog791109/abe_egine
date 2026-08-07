@@ -390,7 +390,6 @@ CMake 中间产物，不作为服务启动路径。服务运行态文件也放�
 | 文件 | 用途 |
 | --- | --- |
 | `server/bin/run/gateway.pid` | gateway 进程 pid 文件，启停脚本用它判断和停止进程。 |
-| `server/bin/logs/gateway/stdout.log` | gateway 进程 stdout/stderr 输出。 |
 | `server/bin/logs/gateway/YYYY-MM-DD/gateway.log` | gateway 默认按天业务日志。 |
 
 服务启停脚本在当前环境执行，只负责启动已经编译好的二进制，不会自动编译代码。默认运行环境是
@@ -406,7 +405,7 @@ scripts/services_stop.sh gateway
 tail 对应文件：
 
 ```bash
-tail -F server/bin/logs/gateway/stdout.log server/bin/logs/gateway/$(date +%F)/gateway.log
+tail -F server/bin/logs/gateway/$(date +%F)/gateway.log
 ```
 
 查看 Docker/Compose 环境容器日志：

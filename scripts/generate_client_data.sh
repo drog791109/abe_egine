@@ -4,6 +4,31 @@
 #   ./scripts/generate_client_data.sh
 # Command description:
 #   Convert all shared Excel tables into validated client and server JSON files.
+#
+# Usage:
+#   ./scripts/generate_client_data.sh
+#   ./scripts/generate_client_data.sh --help
+#
+# Parameters:
+#   -h, --help  Show command usage and exit.
+#   This command accepts no positional parameters.
+#
+# Environment:
+#   TMPDIR      Parent directory for staged JSON files. Default: /tmp.
+#   PATH        Must contain python3. No third-party Python packages are needed.
+#
+# Inputs:
+#   share/tables/*.xlsx
+#   share/tables/*.xlsm
+#
+# Outputs:
+#   client/data/<workbook_name>.json  Fields scoped to client or both.
+#   server/data/<workbook_name>.json  Fields scoped to server or both.
+#
+# Workbook convention:
+#   Row 2 contains client/server/both ownership, row 4 contains field names,
+#   and row 5 starts data. Each workbook has one visible data worksheet and may
+#   include one worksheet named document for JSON root fields.
 
 set -euo pipefail
 
@@ -21,6 +46,32 @@ usage() {
   cat <<'EOF'
 Usage:
   ./scripts/generate_client_data.sh
+
+Options:
+  -h, --help  Show this help text and exit.
+
+Parameters:
+  No positional parameters are accepted.
+
+Environment:
+  TMPDIR      Parent directory for staged output. Default: /tmp.
+  PATH        Must contain python3. No third-party Python packages are required.
+
+Inputs:
+  share/tables/*.xlsx
+  share/tables/*.xlsm
+  Excel temporary lock files beginning with ~$ are ignored.
+
+Workbook convention:
+  Row 2       Field ownership: client, server or both.
+  Row 4       JSON field names.
+  Row 5+      Data records.
+  Worksheets Exactly one visible data worksheet, plus an optional document
+              worksheet containing one record of JSON root fields.
+
+Outputs:
+  client/data/<workbook_name>.json  Includes client and both fields.
+  server/data/<workbook_name>.json  Includes server and both fields.
 
 This command converts all Excel source tables under share/tables, filters fields
 using the ownership values in row 2, validates the generated documents and
@@ -52,6 +103,7 @@ if [ ! -f "${TOOL}" ]; then
   exit 1
 fi
 
+# Discover every supported workbook instead of maintaining a fixed table list.
 shopt -s nullglob
 workbook_candidates=("${TABLE_DIR}"/*.xlsx "${TABLE_DIR}"/*.xlsm)
 shopt -u nullglob
@@ -79,6 +131,7 @@ if [ "${#WORKBOOKS[@]}" -eq 0 ]; then
   exit 1
 fi
 
+# Keep generated files isolated until both targets pass all validation.
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/abe_runtime_data.XXXXXX")
 mkdir -p "${TEMP_DIR}/client" "${TEMP_DIR}/server"
 
@@ -110,6 +163,8 @@ for index in "${!WORKBOOKS[@]}"; do
   workbook=${WORKBOOKS[${index}]}
   output_name=${OUTPUT_NAMES[${index}]}
   workbook_info=()
+  # Read workbook metadata through the converter so sheet selection follows the
+  # same Office XML parsing rules as conversion.
   mapfile -t workbook_info < <(
     PYTHONDONTWRITEBYTECODE=1 python3 - "${TOOL}" "${workbook}" <<'PY'
 import importlib.util
@@ -161,6 +216,7 @@ PY
   if [ -n "${document_sheet}" ]; then
     conversion_args+=(--document-sheet "${document_sheet}")
   fi
+  # Row 2 decides which fields are emitted for each runtime target.
   for target in "${TARGETS[@]}"; do
     python3 "${TOOL}" "${conversion_args[@]}" \
       --target "${target}" \
@@ -168,6 +224,8 @@ PY
   done
 done
 
+# Validate JSON structure, unique IDs and known cross-table references before
+# publishing any staged file.
 python3 - "${TEMP_DIR}" <<'PY'
 import json
 import sys
@@ -223,6 +281,8 @@ def validate_directory(directory):
         if records and all("id" in record for record in records):
             collect_ids(records, "%s.%s" % (path.name, root_key))
 
+    # Additional future tables receive generic JSON and ID validation. These
+    # core tables also have stable cross-table contracts that can be checked.
     core_names = {"items", "rules", "enemies", "explore_nodes", "story_nodes"}
     if core_names.issubset(documents):
         items = documents["items"]
@@ -303,6 +363,7 @@ require(
 print("Validated client/server JSON and cross-table references.")
 PY
 
+# Publish only after client and server staging directories both validate.
 mkdir -p "${CLIENT_OUTPUT_DIR}" "${SERVER_OUTPUT_DIR}"
 for target in "${TARGETS[@]}"; do
   if [ "${target}" = "client" ]; then

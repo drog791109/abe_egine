@@ -249,7 +249,7 @@ gateway、login、gatehub 可执行文件分别输出到 `server/bin/abe_gateway
 配置文件分别默认为 `server/bin/gate.json`、`server/bin/login.json`、`server/bin/gatehub.json`。可以用 `BUILD_DIR`
 覆盖 build 目录；服务配置文件路径由对应 server 的 `config_path()` 固定提供。
 服务启停脚本只负责启动已经编译好的二进制，不会自动编译代码。默认 pid 写到
-`server/bin/run/<service>.pid`，stdout/stderr 写到 `server/bin/logs/<service>/stdout.log`。
+`server/bin/run/<service>.pid`，stdout/stderr 丢弃到 `/dev/null`，不会创建额外输出文件。
 停服脚本只删除 pid 文件，不删除日志。三个服务的默认配置都使用 `log.output=daily`，
 所以业务日志写文件，不会打印到启服终端；实时查看可以直接 tail 日志文件。
 
@@ -321,10 +321,10 @@ gatehub.session_ttl_ms
 ```
 
 gateway 默认配置写到 `server/bin/logs/gateway/YYYY-MM-DD/gateway.log`。
-gateway 进程 stdout/stderr 写到 `server/bin/logs/gateway/stdout.log`。查看当前日志：
+gateway 进程不保存 stdout/stderr。查看当前业务日志：
 
 ```bash
-tail -F server/bin/logs/gateway/stdout.log server/bin/logs/gateway/$(date +%F)/gateway.log
+tail -F server/bin/logs/gateway/$(date +%F)/gateway.log
 ```
 
 例如东八区日志：

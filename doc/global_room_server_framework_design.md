@@ -1397,10 +1397,10 @@ scripts/services_start.sh gateway
 scripts/services_stop.sh gateway
 ```
 
-gateway 默认运行文件放在项目 `server/bin` 目录：pid 文件为 `server/bin/run/gateway.pid`，stdout/stderr 为
-`server/bin/logs/gateway/stdout.log`，业务日志为 `server/bin/logs/gateway/YYYY-MM-DD/gateway.log`。
+gateway 默认运行文件放在项目 `server/bin` 目录：pid 文件为 `server/bin/run/gateway.pid`，
+业务日志为 `server/bin/logs/gateway/YYYY-MM-DD/gateway.log`。服务进程的 stdout/stderr 丢弃到 `/dev/null`。
 停服脚本只删除 pid 文件，不删除日志；gateway 默认写按天业务日志，不打印到启服终端。需要实时查看时，
-直接执行 `tail -F server/bin/logs/gateway/stdout.log server/bin/logs/gateway/$(date +%F)/gateway.log`。
+直接执行 `tail -F server/bin/logs/gateway/$(date +%F)/gateway.log`。
 
 `dev` 容器内源码挂载到 `/workspace`，并预设以下连接配置：
 
