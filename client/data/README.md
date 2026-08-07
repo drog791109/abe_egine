@@ -1,6 +1,8 @@
 # P0 静态数据约定
 
-本目录保存 Godot 客户端随版本发布的静态 JSON 配置。P0 先冻结可读、可校验的数据合同，P1 再实现加载器和运行时对象。
+本目录保存 Godot 客户端随版本发布的静态 JSON 配置。P0 已冻结数据合同，并由
+[`StaticDataRegistry`](../scripts/data/static_data_registry.gd) 完成加载、校验和只读 ID
+索引；P1 在此基础上建立具体玩法运行时对象。
 
 ## 文件清单
 
@@ -35,5 +37,15 @@
 - `requirements`、`effects`、`skills`、`base_effects` 的 `type` 由对应运行时注册表解释。
 
 P1 不允许在场景脚本中复制这些数值；灰盒调整应直接修改 JSON，并重新加载配置。
+
+## 运行时校验
+
+项目启动时，`StaticData` Autoload 会读取五张表。开发环境也可以从仓库根目录执行：
+
+```bash
+godot --headless --path client --script res://scripts/tools/validate_p0_data.gd
+```
+
+该命令验证 P0 固定数量、字段类型、枚举、重复 ID、道具占格和跨表引用。失败时以非零状态退出。
 
 策划 Excel 表位于 [`share/tables/`](../../share/tables/README.md)，可使用 [`tools/excel_to_json.py`](../../tools/excel_to_json.py) 转换；第 2 行归属为 `client` 或 `both` 的字段进入本目录，`server` 或 `both` 的字段进入 `server/data/`。各 JSON 的源表映射、表头约定和生成命令见共享数据表说明。

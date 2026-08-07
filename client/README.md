@@ -51,3 +51,17 @@ client/
 - 新资源只添加到对应目录，不修改目录层级含义。
 - 大批量替换资源时保持相同的相对路径和文件名，减少场景引用变更。
 - 需要改变目录职责时，先更新本文件，再移动资源和修复引用。
+
+## 当前入口
+
+- Godot 主场景：[`scenes/main/main.tscn`](scenes/main/main.tscn)
+- 静态数据 Autoload：[`scripts/data/static_data.gd`](scripts/data/static_data.gd)
+- 数据合同实现：[`scripts/data/static_data_registry.gd`](scripts/data/static_data_registry.gd)
+- P0 无界面校验：[`scripts/tools/validate_p0_data.gd`](scripts/tools/validate_p0_data.gd)
+
+从仓库根目录启动项目或只校验 P0 数据：
+
+```bash
+godot --path client
+godot --headless --path client --script res://scripts/tools/validate_p0_data.gd
+```
