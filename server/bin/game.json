@@ -9,7 +9,7 @@
   "log": {
     "output": "daily",
     "level": "info",
-    "dir": "bin/logs/game"
+    "dir": "server/bin/logs/game"
   },
   "mysql": {
     "enable": 0,

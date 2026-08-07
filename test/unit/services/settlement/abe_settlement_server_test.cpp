@@ -35,7 +35,7 @@ static int test_settlement_server_defaults_and_config(void)
     TEST_REQUIRE(server.name() != NULL);
     TEST_REQUIRE(strcmp(server.name(), "settlement") == 0);
     TEST_REQUIRE(server.config_path() != NULL);
-    TEST_REQUIRE(strcmp(server.config_path(), "bin/settlement.json") == 0);
+    TEST_REQUIRE(strcmp(server.config_path(), "server/bin/settlement.json") == 0);
     TEST_REQUIRE(server.initialized() == 0);
     return ABE_TEST_STATUS_OK;
 }

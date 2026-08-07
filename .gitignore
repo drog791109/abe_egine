@@ -1,7 +1,7 @@
 # Service runtime files
-/bin/abe_*
-/bin/run/
-/bin/logs/
+/server/bin/abe_*
+/server/bin/run/
+/server/bin/logs/
 /run/
 /logs/
 

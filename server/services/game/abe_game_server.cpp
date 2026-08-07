@@ -44,7 +44,7 @@ const char* GameServer::name() const
 
 const char* GameServer::config_path() const
 {
-    return "bin/game.json";
+    return "server/bin/game.json";
 }
 
 void GameServer::defaults()

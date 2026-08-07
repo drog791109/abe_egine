@@ -3,7 +3,6 @@
   "rules": [
     {
       "id": "adjacent_same_type_boost",
-      "name": "同源共鸣",
       "category": "modifier",
       "trigger": {
         "event": "battle_start"
@@ -26,13 +25,10 @@
       "costs": [],
       "limits": {
         "per_battle": 1
-      },
-      "ui_hint": "高亮相邻的同类道具。",
-      "p1_priority": true
+      }
     },
     {
       "id": "destiny_double_start",
-      "name": "天命初燃",
       "category": "modifier",
       "trigger": {
         "event": "battle_start"
@@ -53,13 +49,10 @@
       "costs": [],
       "limits": {
         "per_battle": 1
-      },
-      "ui_hint": "天命格与道具同时发光。",
-      "p1_priority": true
+      }
     },
     {
       "id": "kill_generates_sword_intent",
-      "name": "斩敌生意",
       "category": "trigger",
       "trigger": {
         "event": "enemy_killed"
@@ -82,13 +75,10 @@
       "costs": [],
       "limits": {
         "per_turn": 2
-      },
-      "ui_hint": "从被击败敌人连线到剑类道具。",
-      "p1_priority": true
+      }
     },
     {
       "id": "injury_to_shield",
-      "name": "受创凝甲",
       "category": "transform",
       "trigger": {
         "event": "actor_damaged"
@@ -115,13 +105,10 @@
       ],
       "limits": {
         "per_turn": 1
-      },
-      "ui_hint": "伤害数字收束为护盾边框。",
-      "p1_priority": true
+      }
     },
     {
       "id": "delayed_pill_trigger",
-      "name": "药力后发",
       "category": "modifier",
       "trigger": {
         "event": "pill_triggered"
@@ -142,13 +129,10 @@
       "costs": [],
       "limits": {
         "per_item": 1
-      },
-      "ui_hint": "在时间轴上生成半透明延迟标记。",
-      "p1_priority": true
+      }
     },
     {
       "id": "talisman_chain",
-      "name": "符法连环",
       "category": "modifier",
       "trigger": {
         "event": "talisman_triggered"
@@ -171,13 +155,10 @@
       "costs": [],
       "limits": {
         "chain_depth": 1
-      },
-      "ui_hint": "相邻符箓之间显示单次传播连线。",
-      "p1_priority": true
+      }
     },
     {
       "id": "star_core_tag_transform",
-      "name": "星核化剑",
       "category": "transform",
       "trigger": {
         "event": "battle_start"
@@ -201,13 +182,10 @@
       "costs": [],
       "limits": {
         "per_battle": 1
-      },
-      "ui_hint": "星核物品投射剑气图标。",
-      "p1_priority": true
+      }
     },
     {
       "id": "pollute_slot_for_bonus",
-      "name": "劫灰借力",
       "category": "cost",
       "trigger": {
         "event": "rule_triggered"
@@ -232,13 +210,10 @@
       ],
       "limits": {
         "per_battle": 2
-      },
-      "ui_hint": "先预告将被污染的格子，再结算强化。",
-      "p1_priority": true
+      }
     },
     {
       "id": "armor_break_window_extend",
-      "name": "裂隙延展",
       "category": "modifier",
       "trigger": {
         "event": "status_applied",
@@ -262,13 +237,10 @@
       "costs": [],
       "limits": {
         "per_target": 1
-      },
-      "ui_hint": "延长目标状态条。",
-      "p1_priority": false
+      }
     },
     {
       "id": "low_health_counter",
-      "name": "困兽反击",
       "category": "condition",
       "trigger": {
         "event": "actor_damaged"
@@ -290,13 +262,10 @@
       "costs": [],
       "limits": {
         "per_turn": 1
-      },
-      "ui_hint": "低生命边框闪烁后立即反击。",
-      "p1_priority": false
+      }
     },
     {
       "id": "array_plate_link",
-      "name": "阵脉贯通",
       "category": "modifier",
       "trigger": {
         "event": "battle_start"
@@ -318,13 +287,10 @@
       "costs": [],
       "limits": {
         "per_battle": 1
-      },
-      "ui_hint": "显示阵盘覆盖的连续路径。",
-      "p1_priority": false
+      }
     },
     {
       "id": "same_row_focus",
-      "name": "一线归元",
       "category": "condition",
       "trigger": {
         "event": "battle_start"
@@ -345,13 +311,10 @@
       "costs": [],
       "limits": {
         "per_battle": 1
-      },
-      "ui_hint": "整行背包格短暂高亮。",
-      "p1_priority": false
+      }
     },
     {
       "id": "first_strike_double",
-      "name": "先声夺势",
       "category": "trigger",
       "trigger": {
         "event": "first_actor_attack"
@@ -371,13 +334,10 @@
       "costs": [],
       "limits": {
         "per_battle": 1
-      },
-      "ui_hint": "首击后显示一次较弱追击。",
-      "p1_priority": false
+      }
     },
     {
       "id": "vein_echo_reward",
-      "name": "灵脉回响",
       "category": "trigger",
       "trigger": {
         "event": "battle_won"
@@ -400,13 +360,10 @@
       "costs": [],
       "limits": {
         "per_battle": 1
-      },
-      "ui_hint": "结算界面显示额外灵脉奖励。",
-      "p1_priority": false
+      }
     },
     {
       "id": "mark_enemy_for_drop",
-      "name": "寻痕索物",
       "category": "condition",
       "trigger": {
         "event": "enemy_killed"
@@ -426,13 +383,10 @@
       "costs": [],
       "limits": {
         "per_enemy": 1
-      },
-      "ui_hint": "标记图案转移到掉落物。",
-      "p1_priority": false
+      }
     },
     {
       "id": "stabilize_unstable_rule",
-      "name": "定式归一",
       "category": "cost",
       "trigger": {
         "event": "unstable_rule_triggered"
@@ -460,9 +414,7 @@
       ],
       "limits": {
         "per_battle": 1
-      },
-      "ui_hint": "阵盘熄灭，规则结果转为稳定。",
-      "p1_priority": false
+      }
     }
   ]
 }

@@ -3,7 +3,6 @@
   "enemies": [
     {
       "id": "vein_worm",
-      "name": "灵脉蚀虫",
       "rank": "normal",
       "location": "underground_vein",
       "tags": [
@@ -26,13 +25,10 @@
       "loot_tags": [
         "vein",
         "common"
-      ],
-      "p1_priority": true,
-      "design_note": "P1 无特殊机制的战斗基准。"
+      ]
     },
     {
       "id": "black_armor_echo",
-      "name": "玄甲残影",
       "rank": "normal",
       "location": "taixuan_sect",
       "tags": [
@@ -55,13 +51,10 @@
       "loot_tags": [
         "taixuan",
         "guard"
-      ],
-      "p1_priority": true,
-      "design_note": "验证防御、护盾与破甲。"
+      ]
     },
     {
       "id": "star_dust_beast",
-      "name": "星尘兽",
       "rank": "normal",
       "location": "luoxing_valley",
       "tags": [
@@ -84,13 +77,10 @@
       "loot_tags": [
         "star_core",
         "beast"
-      ],
-      "p1_priority": true,
-      "design_note": "首批星核掉落来源。"
+      ]
     },
     {
       "id": "corrupt_taixuan_guard",
-      "name": "蚀化太玄卫",
       "rank": "normal",
       "location": "taixuan_sect",
       "tags": [
@@ -114,13 +104,10 @@
       "loot_tags": [
         "taixuan",
         "identity"
-      ],
-      "p1_priority": false,
-      "design_note": "承接太玄宗灭门后的异常线索。"
+      ]
     },
     {
       "id": "wild_sword_shadow",
-      "name": "荒剑影",
       "rank": "normal",
       "location": "huanggu_city",
       "tags": [
@@ -144,13 +131,10 @@
       "loot_tags": [
         "sword",
         "spirit"
-      ],
-      "p1_priority": false,
-      "design_note": "高速度敌人，用于检验先手构筑。"
+      ]
     },
     {
       "id": "spirit_thief",
-      "name": "窃灵客",
       "rank": "normal",
       "location": "huanggu_city",
       "tags": [
@@ -174,13 +158,10 @@
       "loot_tags": [
         "talisman",
         "city"
-      ],
-      "p1_priority": false,
-      "design_note": "让玩家感知灵气代价的压力。"
+      ]
     },
     {
       "id": "array_guardian_puppet",
-      "name": "守阵傀儡",
       "rank": "elite",
       "location": "underground_vein",
       "tags": [
@@ -210,13 +191,10 @@
         "array",
         "vein",
         "uncommon"
-      ],
-      "p1_priority": true,
-      "design_note": "首个双技能精英，强调破甲窗口。"
+      ]
     },
     {
       "id": "identity_plate_hunter",
-      "name": "夺牌人",
       "rank": "elite",
       "location": "huanggu_city",
       "tags": [
@@ -246,13 +224,10 @@
         "identity",
         "clue",
         "rare"
-      ],
-      "p1_priority": false,
-      "design_note": "荒古城调查线精英，掉落替身身份线索。"
+      ]
     },
     {
       "id": "star_core_corrupted_beast",
-      "name": "星核蚀兽",
       "rank": "boss",
       "location": "luoxing_valley",
       "tags": [
@@ -288,9 +263,7 @@
         "star_core",
         "boss",
         "rare"
-      ],
-      "p1_priority": true,
-      "design_note": "P1 重点验证复现玩家最后一次规则联动，污染背包格只做单格演示。"
+      ]
     }
   ]
 }

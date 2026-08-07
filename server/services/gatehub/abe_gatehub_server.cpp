@@ -680,7 +680,7 @@ const char* GateHubServer::name() const
 
 const char* GateHubServer::config_path() const
 {
-    return "bin/gatehub.json";
+    return "server/bin/gatehub.json";
 }
 
 void GateHubServer::defaults()

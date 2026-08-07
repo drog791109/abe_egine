@@ -1,6 +1,6 @@
 # Server 目录结构
 
-`server/` 是服务端源码根目录，包含基础设施和服务进程。客户端与服务端共享的协议定义位于仓库根级 `share/`。下面的箭头表示“右侧可以依赖左侧”：
+`server/` 是服务端根目录，包含基础设施、服务进程、运行目录和静态数据。客户端与服务端共享的协议定义与 Excel 源表位于仓库根级 `share/`。下面的箭头表示“右侧可以依赖左侧”：
 
 ```text
 engine/base -> engine/common -> engine/adapters -> services
@@ -22,6 +22,8 @@ abe_engine/
         backends/   common/base 接口的具体实现，隔离 MySQL C API 等原始第三方接口
         adapters/   将 base/common 的 C 接口适配为不高于 C++11 的简单 RAII 和类接口
     services/       可独立启动的服务进程入口和组装层
+    bin/            服务可执行文件、启动配置、PID 和日志运行目录
+    data/           由 share/tables Excel 生成的服务端静态 JSON
   share/proto/      客户端与服务端共享的协议定义源文件
 ```
 
@@ -167,10 +169,10 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 `server/services/gateway` 提供 gateway 进程的基础骨架：
 
 - `abe_gateway` 是可启动进程，默认监听 `0.0.0.0:7000`。
-- gateway 可执行文件固定输出到 `bin/abe_gateway`，配置文件固定使用 `bin/gate.json`。
+- gateway 可执行文件固定输出到 `server/bin/abe_gateway`，配置文件固定使用 `server/bin/gate.json`。
 - `abe_gateway_main.cpp` 只创建 `GatewayServer`，然后调用公共 `run()`。
 - `GatewayServer` 是普通 server 对象，封装 gateway 模块生命周期，持有 tcp server、SessionManager、link 槽位和 gateway session 槽位。
-- `GatewayServer` 默认配置文件是 `bin/gate.json`，服务进程不再接受命令行参数覆盖。
+- `GatewayServer` 默认配置文件是 `server/bin/gate.json`，服务进程不再接受命令行参数覆盖。
 - 网络 `Loop` 由 `ServiceRuntime` 创建和驱动，`GatewayServer` 只在初始化时把监听 server 挂到该 loop。
 - 进程采用单主循环事件驱动模型，不创建业务线程；需要扩容时优先多开进程实例。
 - `GatewayServer` 把 `TcpServer` 回调接到 `GatewaySession` 和 `service/session::SessionManager`。
@@ -208,7 +210,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 
 `server/services/login` 提供登录服务骨架和账号校验核心：
 
-- `abe_login` 是可启动进程，默认配置文件是 `bin/login.json`。
+- `abe_login` 是可启动进程，默认配置文件是 `server/bin/login.json`。
 - 账号只允许 ASCII 字母、数字、`_`、`-`、`.`，长度 4 到 32，并拒绝 SQL 关键字、注释符、引号、反斜杠等 SQL-like 输入。
 - 昵称要求合法 UTF-8，长度 2 到 16 个 codepoint，拒绝控制字符、SQL-like 输入和配置的脏字。
 - `login.dirty_words` 使用逗号、竖线、分号或换行分隔。
@@ -219,7 +221,7 @@ TCP/UDP 收包统一通过 `on_receive` 回调通知，不提供阻塞式 `recei
 
 `server/services/gatehub` 提供独立的在线会话索引：
 
-- `abe_gatehub` 是可启动进程，默认配置文件是 `bin/gatehub.json`。
+- `abe_gatehub` 是可启动进程，默认配置文件是 `server/bin/gatehub.json`。
 - 维护 `uid -> session_id/session_token/gateway_id/connection_id`。
 - 连接断开后，如果 `gatehub.allow_reconnect=true`，会话进入 `GATEHUB_SESSION_RECONNECTING`，在 `gatehub.reconnect_grace_ms` 内允许用原 token 重新绑定。
 - 超过重连窗口或 session TTL 后，`update()` 会清理会话。
@@ -243,15 +245,15 @@ scripts/services_stop.sh login gatehub gateway
 
 Docker 包装脚本默认 build 目录为容器本地 `/tmp/abe_engine_build/engine`，避免共享目录并发写构建产物时出现
 截断文件；纯编译脚本 `scripts/build.sh` 和 `scripts/rebuild.sh` 默认 build 目录为 `build/engine`。
-gateway、login、gatehub 可执行文件分别输出到 `bin/abe_gateway`、`bin/abe_login`、`bin/abe_gatehub`；
-配置文件分别默认为 `bin/gate.json`、`bin/login.json`、`bin/gatehub.json`。可以用 `BUILD_DIR`
+gateway、login、gatehub 可执行文件分别输出到 `server/bin/abe_gateway`、`server/bin/abe_login`、`server/bin/abe_gatehub`；
+配置文件分别默认为 `server/bin/gate.json`、`server/bin/login.json`、`server/bin/gatehub.json`。可以用 `BUILD_DIR`
 覆盖 build 目录；服务配置文件路径由对应 server 的 `config_path()` 固定提供。
 服务启停脚本只负责启动已经编译好的二进制，不会自动编译代码。默认 pid 写到
-`bin/run/<service>.pid`，stdout/stderr 写到 `bin/logs/<service>/stdout.log`。
+`server/bin/run/<service>.pid`，stdout/stderr 写到 `server/bin/logs/<service>/stdout.log`。
 停服脚本只删除 pid 文件，不删除日志。三个服务的默认配置都使用 `log.output=daily`，
 所以业务日志写文件，不会打印到启服终端；实时查看可以直接 tail 日志文件。
 
-gateway 专属参数只从 `bin/gate.json` 的 `gateway.*` 读取。公共 runtime、日志、数据库、Redis
+gateway 专属参数只从 `server/bin/gate.json` 的 `gateway.*` 读取。公共 runtime、日志、数据库、Redis
 和雪花 ID 设置也只从各服务固定 JSON 的对应字段读取。MySQL 和 Redis 是服务启动必需依赖，
 runtime 初始化失败会直接停止服务启动。
 gateway、login 和 gatehub 的 JSON 配置字段都直接通过 `abe_config.h` 的 `abe_config_get_*`
@@ -318,11 +320,11 @@ gatehub.session_ttl_ms
 <root_directory>/YYYY-MM-DD/<logger_name>.log
 ```
 
-gateway 默认配置写到 `bin/logs/gateway/YYYY-MM-DD/gateway.log`。
-gateway 进程 stdout/stderr 写到 `bin/logs/gateway/stdout.log`。查看当前日志：
+gateway 默认配置写到 `server/bin/logs/gateway/YYYY-MM-DD/gateway.log`。
+gateway 进程 stdout/stderr 写到 `server/bin/logs/gateway/stdout.log`。查看当前日志：
 
 ```bash
-tail -F bin/logs/gateway/stdout.log bin/logs/gateway/$(date +%F)/gateway.log
+tail -F server/bin/logs/gateway/stdout.log server/bin/logs/gateway/$(date +%F)/gateway.log
 ```
 
 例如东八区日志：

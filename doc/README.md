@@ -384,14 +384,14 @@ scripts/rebuild.sh
 BUILD_DIR=/tmp/abe_engine_build/engine scripts/build.sh
 ```
 
-gateway 的可执行文件固定输出到 `bin/abe_gateway`，配置文件固定使用 `bin/gate.json`。build 目录只保存
-CMake 中间产物，不作为服务启动路径。服务运行态文件也放在 `bin` 运行目录下：
+gateway 的可执行文件固定输出到 `server/bin/abe_gateway`，配置文件固定使用 `server/bin/gate.json`。build 目录只保存
+CMake 中间产物，不作为服务启动路径。服务运行态文件也放在 `server/bin` 运行目录下：
 
 | 文件 | 用途 |
 | --- | --- |
-| `bin/run/gateway.pid` | gateway 进程 pid 文件，启停脚本用它判断和停止进程。 |
-| `bin/logs/gateway/stdout.log` | gateway 进程 stdout/stderr 输出。 |
-| `bin/logs/gateway/YYYY-MM-DD/gateway.log` | gateway 默认按天业务日志。 |
+| `server/bin/run/gateway.pid` | gateway 进程 pid 文件，启停脚本用它判断和停止进程。 |
+| `server/bin/logs/gateway/stdout.log` | gateway 进程 stdout/stderr 输出。 |
+| `server/bin/logs/gateway/YYYY-MM-DD/gateway.log` | gateway 默认按天业务日志。 |
 
 服务启停脚本在当前环境执行，只负责启动已经编译好的二进制，不会自动编译代码。默认运行环境是
 `dev` 容器内的 `/workspace`：
@@ -401,12 +401,12 @@ scripts/services_start.sh gateway
 scripts/services_stop.sh gateway
 ```
 
-`scripts/services_stop.sh` 只删除 pid 文件，不删除 `bin/logs/` 下的日志文件。gateway 默认配置为
+`scripts/services_stop.sh` 只删除 pid 文件，不删除 `server/bin/logs/` 下的日志文件。gateway 默认配置为
 `log.output=daily`，业务日志不会打印到启服终端，会写到上面的按天日志文件。查看 gateway 日志可以直接
 tail 对应文件：
 
 ```bash
-tail -F bin/logs/gateway/stdout.log bin/logs/gateway/$(date +%F)/gateway.log
+tail -F server/bin/logs/gateway/stdout.log server/bin/logs/gateway/$(date +%F)/gateway.log
 ```
 
 查看 Docker/Compose 环境容器日志：

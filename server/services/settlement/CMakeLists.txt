@@ -33,7 +33,7 @@ set_target_properties(abe_settlement
         CXX_STANDARD 11
         CXX_STANDARD_REQUIRED YES
         CXX_EXTENSIONS NO
-        RUNTIME_OUTPUT_DIRECTORY "${ABE_REPO_ROOT}/bin"
+        RUNTIME_OUTPUT_DIRECTORY "${ABE_REPO_ROOT}/server/bin"
 )
 
 target_link_libraries(abe_settlement

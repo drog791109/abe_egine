@@ -42,7 +42,7 @@ const char* LobbyServer::name() const
 
 const char* LobbyServer::config_path() const
 {
-    return "bin/lobby.json";
+    return "server/bin/lobby.json";
 }
 
 void LobbyServer::defaults()

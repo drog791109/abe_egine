@@ -16,12 +16,12 @@
 #
 # Defaults:
 #   service  login gatehub gateway
-#   RUN_DIR  bin/run
+#   RUN_DIR  server/bin/run
 #
 # Environment:
 #   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
-#   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: bin/logs/gateway/stdout.log
-#   GATEWAY_LOG_DIR   Gateway daily log root. Default: bin/logs/gateway
+#   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: server/bin/logs/gateway/stdout.log
+#   GATEWAY_LOG_DIR   Gateway daily log root. Default: server/bin/logs/gateway
 #   LOGIN_PID_FILE    Login pid file. Default: ${RUN_DIR}/login.pid
 #   GATEHUB_PID_FILE  Gatehub pid file. Default: ${RUN_DIR}/gatehub.pid
 #
@@ -48,12 +48,12 @@ Services:
 
 Defaults:
   service  login gatehub gateway
-  RUN_DIR  bin/run
+  RUN_DIR  server/bin/run
 
 Environment:
   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
-  GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: bin/logs/gateway/stdout.log
-  GATEWAY_LOG_DIR   Gateway daily log root. Default: bin/logs/gateway
+  GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: server/bin/logs/gateway/stdout.log
+  GATEWAY_LOG_DIR   Gateway daily log root. Default: server/bin/logs/gateway
   LOGIN_PID_FILE    Login pid file. Default: ${RUN_DIR}/login.pid
   GATEHUB_PID_FILE  Gatehub pid file. Default: ${RUN_DIR}/gatehub.pid
 
@@ -177,7 +177,7 @@ stop_runtime_service() {
 
   service=$1
   service_key=$(printf '%s' "${service}" | tr '[:lower:]' '[:upper:]')
-  run_dir=${RUN_DIR:-bin/run}
+  run_dir=${RUN_DIR:-server/bin/run}
   pid_file_var=${service_key}_PID_FILE
   pid_file=${!pid_file_var:-${run_dir}/${service}.pid}
   stop_pid_file "${service}" "${pid_file}"

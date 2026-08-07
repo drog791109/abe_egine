@@ -3,10 +3,7 @@
   "story_nodes": [
     {
       "id": "cellar_seal_breaks",
-      "title": "封印裂开",
       "location": "xuanli_cellar",
-      "speaker": "叶凡",
-      "summary": "主角从王府地窖的残缺记忆中醒来，只记得一枚太玄令。",
       "requirements": [],
       "effects": [
         {
@@ -21,10 +18,7 @@
     },
     {
       "id": "taixuan_bells_stop",
-      "title": "钟声止息",
       "location": "taixuan_sect",
-      "speaker": "旁白",
-      "summary": "太玄宗山门失守，钟声在第七响后戛然而止。",
       "requirements": [
         {
           "type": "flag",
@@ -45,10 +39,7 @@
     },
     {
       "id": "qingluo_rescue",
-      "title": "废墟相救",
       "location": "taixuan_sect",
-      "speaker": "沈青萝",
-      "summary": "沈青萝将叶凡带离山门，并质疑他为何持有失踪多年的太玄令。",
       "requirements": [
         {
           "type": "flag",
@@ -69,10 +60,7 @@
     },
     {
       "id": "vein_fall",
-      "title": "坠入灵脉",
       "location": "underground_vein",
-      "speaker": "旁白",
-      "summary": "逃亡途中地面塌陷，两人坠入太玄宗地下灵脉。",
       "requirements": [],
       "effects": [
         {
@@ -86,10 +74,7 @@
     },
     {
       "id": "rules_awaken",
-      "title": "造化初显",
       "location": "underground_vein",
-      "speaker": "叶凡",
-      "summary": "叶凡首次看见道具之间隐藏的规则连线。",
       "requirements": [],
       "effects": [
         {
@@ -103,10 +88,7 @@
     },
     {
       "id": "first_rule_test",
-      "title": "第一次验证",
       "location": "underground_vein",
-      "speaker": "沈青萝",
-      "summary": "玩家整理背包并在蚀虫战斗中验证第一条规则。",
       "requirements": [
         {
           "type": "rule_unlocked",
@@ -126,10 +108,7 @@
     },
     {
       "id": "array_warning",
-      "title": "残阵警示",
       "location": "underground_vein",
-      "speaker": "沈青萝",
-      "summary": "残缺阵纹记录着有人主动切断太玄灵脉。",
       "requirements": [
         {
           "type": "item_owned",
@@ -149,10 +128,7 @@
     },
     {
       "id": "huanggu_refuge",
-      "title": "荒城暂栖",
       "location": "huanggu_city",
-      "speaker": "旁白",
-      "summary": "两人进入荒古城寻找补给和太玄宗幸存者。",
       "requirements": [],
       "effects": [
         {
@@ -166,10 +142,7 @@
     },
     {
       "id": "identity_plate_rumor",
-      "title": "旧牌传闻",
       "location": "huanggu_city",
-      "speaker": "黑市掮客",
-      "summary": "黑市流出一枚与叶凡相貌记录相符、年代却早了十年的身份牌。",
       "requirements": [],
       "effects": [
         {
@@ -184,10 +157,7 @@
     },
     {
       "id": "hunter_ambush",
-      "title": "夺牌伏击",
       "location": "huanggu_city",
-      "speaker": "夺牌人",
-      "summary": "神秘人抢夺身份牌，并称叶凡只是被留下的壳。",
       "requirements": [
         {
           "type": "flag",
@@ -208,10 +178,7 @@
     },
     {
       "id": "valley_coordinates",
-      "title": "星谷坐标",
       "location": "huanggu_city",
-      "speaker": "沈青萝",
-      "summary": "身份牌暗纹指向落星谷，那里可能藏着太玄令的来源。",
       "requirements": [
         {
           "type": "item_owned",
@@ -230,10 +197,7 @@
     },
     {
       "id": "star_core_resonance",
-      "title": "星核共鸣",
       "location": "luoxing_valley",
-      "speaker": "叶凡",
-      "summary": "星核碎片与太玄令共鸣，显现出另一名叶凡的战斗残影。",
       "requirements": [
         {
           "type": "item_owned",
@@ -252,10 +216,7 @@
     },
     {
       "id": "corrupted_core",
-      "title": "蚀兽守核",
       "location": "luoxing_valley",
-      "speaker": "旁白",
-      "summary": "被污染的星兽吞下核心，战斗中开始侵蚀玩家背包格。",
       "requirements": [],
       "effects": [
         {
@@ -269,10 +230,7 @@
     },
     {
       "id": "duplicate_body_reveal",
-      "title": "替身之证",
       "location": "luoxing_valley",
-      "speaker": "沈青萝",
-      "summary": "核心记录证实叶凡的身体并非原身，但意识来源仍不明确。",
       "requirements": [
         {
           "type": "encounter_won",

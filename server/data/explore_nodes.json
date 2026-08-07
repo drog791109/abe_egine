@@ -1,30 +1,19 @@
 {
   "schema_version": 1,
   "start_node": "prologue_cellar_memory",
-  "p1_start_node": "underground_first_grid",
-  "p1_route": [
-    "underground_first_grid",
-    "underground_beast_fight",
-    "underground_array_ruin",
-    "star_core_mine_choice",
-    "star_beast_boss"
-  ],
   "nodes": [
     {
       "id": "prologue_cellar_memory",
-      "name": "王府地窖残忆",
       "location": "xuanli_cellar",
       "node_type": "story",
       "encounter_id": null,
       "rewards": [],
       "next_nodes": [
         "taixuan_gate_escape"
-      ],
-      "p1_priority": false
+      ]
     },
     {
       "id": "taixuan_gate_escape",
-      "name": "太玄山门突围",
       "location": "taixuan_sect",
       "node_type": "battle",
       "encounter_id": "corrupt_taixuan_guard",
@@ -34,12 +23,10 @@
       ],
       "next_nodes": [
         "underground_first_grid"
-      ],
-      "p1_priority": false
+      ]
     },
     {
       "id": "underground_first_grid",
-      "name": "灵脉初醒",
       "location": "underground_vein",
       "node_type": "tutorial",
       "encounter_id": null,
@@ -51,12 +38,10 @@
       "next_nodes": [
         "underground_beast_fight",
         "underground_array_ruin"
-      ],
-      "p1_priority": true
+      ]
     },
     {
       "id": "underground_beast_fight",
-      "name": "蚀虫巢穴",
       "location": "underground_vein",
       "node_type": "battle",
       "encounter_id": "vein_worm",
@@ -66,12 +51,10 @@
       ],
       "next_nodes": [
         "underground_array_ruin"
-      ],
-      "p1_priority": true
+      ]
     },
     {
       "id": "underground_array_ruin",
-      "name": "残阵岔路",
       "location": "underground_vein",
       "node_type": "choice",
       "encounter_id": "array_guardian_puppet",
@@ -81,24 +64,20 @@
       ],
       "next_nodes": [
         "huanggu_city_arrival"
-      ],
-      "p1_priority": true
+      ]
     },
     {
       "id": "huanggu_city_arrival",
-      "name": "荒古城入夜",
       "location": "huanggu_city",
       "node_type": "story",
       "encounter_id": null,
       "rewards": [],
       "next_nodes": [
         "auction_identity_plate"
-      ],
-      "p1_priority": false
+      ]
     },
     {
       "id": "auction_identity_plate",
-      "name": "黑市身份牌",
       "location": "huanggu_city",
       "node_type": "choice",
       "encounter_id": "identity_plate_hunter",
@@ -108,12 +87,10 @@
       ],
       "next_nodes": [
         "luoxing_valley_entry"
-      ],
-      "p1_priority": false
+      ]
     },
     {
       "id": "luoxing_valley_entry",
-      "name": "落星谷口",
       "location": "luoxing_valley",
       "node_type": "rest",
       "encounter_id": null,
@@ -122,12 +99,10 @@
       ],
       "next_nodes": [
         "star_core_mine_choice"
-      ],
-      "p1_priority": false
+      ]
     },
     {
       "id": "star_core_mine_choice",
-      "name": "星核矿脉",
       "location": "luoxing_valley",
       "node_type": "choice",
       "encounter_id": "star_dust_beast",
@@ -137,12 +112,10 @@
       ],
       "next_nodes": [
         "star_beast_boss"
-      ],
-      "p1_priority": true
+      ]
     },
     {
       "id": "star_beast_boss",
-      "name": "坠星核心",
       "location": "luoxing_valley",
       "node_type": "boss",
       "encounter_id": "star_core_corrupted_beast",
@@ -152,18 +125,15 @@
       ],
       "next_nodes": [
         "duplicate_body_reveal"
-      ],
-      "p1_priority": true
+      ]
     },
     {
       "id": "duplicate_body_reveal",
-      "name": "替身之证",
       "location": "luoxing_valley",
       "node_type": "story",
       "encounter_id": null,
       "rewards": [],
-      "next_nodes": [],
-      "p1_priority": false
+      "next_nodes": []
     }
   ]
 }

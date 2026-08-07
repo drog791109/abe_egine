@@ -168,7 +168,7 @@ const char* LoginServer::name() const
 
 const char* LoginServer::config_path() const
 {
-    return "bin/login.json";
+    return "server/bin/login.json";
 }
 
 void LoginServer::defaults()

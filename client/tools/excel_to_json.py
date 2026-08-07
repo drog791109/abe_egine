@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert an Excel workbook into UTF-8 JSON for the Godot client.
+"""Convert an Excel workbook into filtered UTF-8 runtime JSON.
 
 Usage:
     python3 client/tools/excel_to_json.py INPUT [options]
@@ -17,11 +17,19 @@ Parameters:
     --root-key KEY             Top-level array key for one-sheet output.
                                 Defaults to a snake_case form of the sheet name
                                 and must match [a-z][a-z0-9_]*.
+    --document-sheet NAME      Merge the single data row from this worksheet
+                                into the JSON root. Requires --sheet and cannot
+                                be combined with --all-sheets.
     --header-row NUMBER        One-based row containing field names; must be at
                                 least 1 (default: 1).
     --data-row NUMBER          One-based row containing the first data record;
                                 must be greater than --header-row. Defaults to
                                 the row immediately after the header.
+    --scope-row NUMBER         One-based row containing client/server/both
+                                field ownership. Must be used with --target and
+                                appear before the first data row.
+    --target {client,server}   Keep fields owned by this target or by both.
+                                Must be used with --scope-row.
     --schema-version NUMBER    Non-negative schema_version written at the JSON
                                 root (default: 1).
     --indent NUMBER            JSON indentation from 0 through 8 (default: 2).
@@ -37,9 +45,13 @@ Environment variables:
 Examples:
     python3 client/tools/excel_to_json.py design/items.xlsx \
         --sheet items --root-key items --header-row 4 --data-row 5 \
+        --scope-row 2 --target client \
         -o client/data/items.json --force
     python3 client/tools/excel_to_json.py design/game_data.xlsx \
         --all-sheets -o client/data/game_data.json
+    python3 client/tools/excel_to_json.py design/explore_nodes.xlsx \
+        --sheet nodes --document-sheet document --root-key nodes \
+        --header-row 4 --data-row 5 -o client/data/explore_nodes.json --force
     python3 client/tools/excel_to_json.py design/rules.xlsx \
         --sheet rules --root-key rules --output -
 """
@@ -79,15 +91,18 @@ def xml_name(namespace, local_name):
 def parse_arguments(argv):
     """Parse and validate command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Convert .xlsx/.xlsm worksheet rows into UTF-8 JSON."
+        description="Convert .xlsx/.xlsm worksheet rows into UTF-8 runtime JSON."
     )
     parser.add_argument("input", type=Path, metavar="INPUT")
     parser.add_argument("-o", "--output", type=Path)
     parser.add_argument("--sheet")
     parser.add_argument("--all-sheets", action="store_true")
     parser.add_argument("--root-key")
+    parser.add_argument("--document-sheet")
     parser.add_argument("--header-row", type=int, default=1)
     parser.add_argument("--data-row", type=int)
+    parser.add_argument("--scope-row", type=int)
+    parser.add_argument("--target", choices=("client", "server"))
     parser.add_argument("--schema-version", type=int, default=1)
     parser.add_argument("--indent", type=int, default=2)
     parser.add_argument("--literal-strings", action="store_true")
@@ -98,12 +113,27 @@ def parse_arguments(argv):
         parser.error("--all-sheets cannot be combined with --sheet")
     if args.all_sheets and args.root_key:
         parser.error("--all-sheets cannot be combined with --root-key")
+    if args.all_sheets and args.document_sheet:
+        parser.error("--all-sheets cannot be combined with --document-sheet")
+    if args.document_sheet and not args.sheet:
+        parser.error("--document-sheet requires --sheet")
+    if args.document_sheet and args.document_sheet == args.sheet:
+        parser.error("--document-sheet must differ from --sheet")
     if args.header_row < 1:
         parser.error("--header-row must be at least 1")
     if args.data_row is None:
         args.data_row = args.header_row + 1
     if args.data_row <= args.header_row:
         parser.error("--data-row must be greater than --header-row")
+    if (args.scope_row is None) != (args.target is None):
+        parser.error("--scope-row and --target must be used together")
+    if args.scope_row is not None:
+        if args.scope_row < 1:
+            parser.error("--scope-row must be at least 1")
+        if args.scope_row == args.header_row:
+            parser.error("--scope-row must differ from --header-row")
+        if args.scope_row >= args.data_row:
+            parser.error("--scope-row must appear before --data-row")
     if args.schema_version < 0:
         parser.error("--schema-version must be non-negative")
     if args.indent < 0 or args.indent > 8:
@@ -365,6 +395,60 @@ def read_headers(sheet_title, row_values):
     return headers
 
 
+def filter_headers_by_target(sheet_title, rows, headers, scope_row, target):
+    """Keep fields assigned to the requested target or to both targets."""
+    if scope_row is None:
+        return headers
+
+    scope_values = None
+    for row_number, values in rows:
+        if row_number == scope_row:
+            scope_values = values
+            break
+    if scope_values is None:
+        raise ConversionError(
+            "worksheet '%s' does not contain scope row %d"
+            % (sheet_title, scope_row)
+        )
+
+    filtered = {}
+    allowed_scopes = ("client", "server", "both")
+    for column, path in headers.items():
+        raw_scope = scope_values.get(column)
+        if not isinstance(raw_scope, str):
+            raise ConversionError(
+                "worksheet '%s' scope row %d field '%s' requires one of: %s"
+                % (
+                    sheet_title,
+                    scope_row,
+                    ".".join(path),
+                    ", ".join(allowed_scopes),
+                )
+            )
+        scope = raw_scope.strip().lower()
+        if scope not in allowed_scopes:
+            raise ConversionError(
+                "worksheet '%s' scope row %d field '%s' has invalid scope '%s'; "
+                "expected one of: %s"
+                % (
+                    sheet_title,
+                    scope_row,
+                    ".".join(path),
+                    raw_scope,
+                    ", ".join(allowed_scopes),
+                )
+            )
+        if scope in (target, "both"):
+            filtered[column] = path
+
+    if not filtered:
+        raise ConversionError(
+            "worksheet '%s' contains no fields for target '%s'"
+            % (sheet_title, target)
+        )
+    return filtered
+
+
 def parse_json_string(value, sheet_title, row_number, field_name):
     """Parse array/object text while preserving ordinary string values."""
     if not isinstance(value, str):
@@ -402,7 +486,14 @@ def assign_nested_value(record, path, value):
 
 
 def convert_sheet(
-    archive, sheet, shared_strings, header_row, data_row, literal_strings
+    archive,
+    sheet,
+    shared_strings,
+    header_row,
+    data_row,
+    literal_strings,
+    scope_row,
+    target,
 ):
     """Convert one worksheet to a list of row objects."""
     rows = read_sheet_rows(archive, sheet, shared_strings)
@@ -417,6 +508,9 @@ def convert_sheet(
             % (sheet["title"], header_row)
         )
     headers = read_headers(sheet["title"], header_values)
+    headers = filter_headers_by_target(
+        sheet["title"], rows, headers, scope_row, target
+    )
 
     records = []
     seen_ids = set()
@@ -487,6 +581,7 @@ def select_sheets(sheets, requested_sheet, all_sheets):
 
 def convert_workbook(input_path, args):
     """Read an Excel workbook and return its target JSON object and row count."""
+    document_fields = {}
     try:
         with zipfile.ZipFile(input_path, "r") as archive:
             sheets = read_workbook_sheets(archive)
@@ -504,9 +599,41 @@ def convert_workbook(input_path, args):
                     args.header_row,
                     args.data_row,
                     args.literal_strings,
+                    args.scope_row,
+                    args.target,
                 )
                 converted[sheet["title"]] = records
                 total_rows += len(records)
+
+            if args.document_sheet:
+                document_sheet = None
+                for sheet in sheets:
+                    if sheet["title"] == args.document_sheet:
+                        document_sheet = sheet
+                        break
+                if document_sheet is None:
+                    available = ", ".join(sheet["title"] for sheet in sheets)
+                    raise ConversionError(
+                        "document worksheet '%s' was not found; available sheets: %s"
+                        % (args.document_sheet, available)
+                    )
+                document_records = convert_sheet(
+                    archive,
+                    document_sheet,
+                    shared_strings,
+                    args.header_row,
+                    args.data_row,
+                    args.literal_strings,
+                    args.scope_row,
+                    args.target,
+                )
+                if len(document_records) != 1:
+                    raise ConversionError(
+                        "document worksheet '%s' must contain exactly one data row"
+                        % args.document_sheet
+                    )
+                document_fields = document_records[0]
+                total_rows += 1
     except zipfile.BadZipFile as error:
         raise ConversionError("input is not a valid .xlsx/.xlsm workbook") from error
 
@@ -518,11 +645,18 @@ def convert_workbook(input_path, args):
     else:
         sheet_title = selected_sheets[0]["title"]
         root_key = args.root_key or normalize_root_key(sheet_title)
-        document = {
-            "schema_version": args.schema_version,
-            root_key: converted[sheet_title],
-        }
-    return document, total_rows, len(selected_sheets)
+        reserved_fields = {"schema_version", root_key}
+        conflicts = sorted(reserved_fields.intersection(document_fields))
+        if conflicts:
+            raise ConversionError(
+                "document worksheet '%s' contains reserved root field(s): %s"
+                % (args.document_sheet, ", ".join(conflicts))
+            )
+        document = {"schema_version": args.schema_version}
+        document.update(document_fields)
+        document[root_key] = converted[sheet_title]
+    sheet_count = len(selected_sheets) + (1 if args.document_sheet else 0)
+    return document, total_rows, sheet_count
 
 
 def render_json(document, indent):

@@ -60,7 +60,7 @@ const char* GatewayServer::name() const
 
 const char* GatewayServer::config_path() const
 {
-    return "bin/gate.json";
+    return "server/bin/gate.json";
 }
 
 void GatewayServer::defaults()

@@ -9,23 +9,23 @@
 #   ./scripts/services_start.sh [service...]
 #
 # Services:
-#   gateway    Start bin/abe_gateway with bin/gate.json.
-#   login      Start bin/abe_login with bin/login.json.
-#   gatehub    Start bin/abe_gatehub with bin/gatehub.json.
+#   gateway    Start server/bin/abe_gateway with server/bin/gate.json.
+#   login      Start server/bin/abe_login with server/bin/login.json.
+#   gatehub    Start server/bin/abe_gatehub with server/bin/gatehub.json.
 #   all        Start all default services. Currently: login, gatehub, gateway.
 #
 # Defaults:
 #   service    login gatehub gateway
-#   RUN_DIR    bin/run
-#   OUT_DIR    bin/logs
+#   RUN_DIR    server/bin/run
+#   OUT_DIR    server/bin/logs
 #
 # Environment:
-#   GATEWAY_BIN       Gateway binary path. Default: bin/abe_gateway
+#   GATEWAY_BIN       Gateway binary path. Default: server/bin/abe_gateway
 #   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
 #   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: ${OUT_DIR}/gateway/stdout.log
 #   GATEWAY_LOG_DIR   Gateway daily log root. Default: ${OUT_DIR}/gateway
-#   LOGIN_BIN         Login binary path. Default: bin/abe_login
-#   GATEHUB_BIN       Gatehub binary path. Default: bin/abe_gatehub
+#   LOGIN_BIN         Login binary path. Default: server/bin/abe_login
+#   GATEHUB_BIN       Gatehub binary path. Default: server/bin/abe_gatehub
 #
 # Note:
 #   This script does not build code, start Docker, or enter a container. Build
@@ -42,23 +42,23 @@ Usage:
   scripts/services_start.sh [service...]
 
 Services:
-  gateway    Start bin/abe_gateway with bin/gate.json.
-  login      Start bin/abe_login with bin/login.json.
-  gatehub    Start bin/abe_gatehub with bin/gatehub.json.
+  gateway    Start server/bin/abe_gateway with server/bin/gate.json.
+  login      Start server/bin/abe_login with server/bin/login.json.
+  gatehub    Start server/bin/abe_gatehub with server/bin/gatehub.json.
   all        Start all default services. Currently: login, gatehub, gateway.
 
 Defaults:
   service    login gatehub gateway
-  RUN_DIR    bin/run
-  OUT_DIR    bin/logs
+  RUN_DIR    server/bin/run
+  OUT_DIR    server/bin/logs
 
 Environment:
-  GATEWAY_BIN       Gateway binary path. Default: bin/abe_gateway
+  GATEWAY_BIN       Gateway binary path. Default: server/bin/abe_gateway
   GATEWAY_PID_FILE  Gateway pid file. Default: ${RUN_DIR}/gateway.pid
   GATEWAY_OUT_FILE  Gateway stdout/stderr file. Default: ${OUT_DIR}/gateway/stdout.log
   GATEWAY_LOG_DIR   Gateway daily log root. Default: ${OUT_DIR}/gateway
-  LOGIN_BIN         Login binary path. Default: bin/abe_login
-  GATEHUB_BIN       Gatehub binary path. Default: bin/abe_gatehub
+  LOGIN_BIN         Login binary path. Default: server/bin/abe_login
+  GATEHUB_BIN       Gatehub binary path. Default: server/bin/abe_gatehub
 
 This script does not start Docker or enter a container. The default project
 runtime is the dev container /workspace; run this script there unless the host
@@ -165,15 +165,15 @@ start_runtime_service() {
   pid_file_var=${service_key}_PID_FILE
   out_file_var=${service_key}_OUT_FILE
 
-  default_config=bin/${service}.json
+  default_config=server/bin/${service}.json
   if [ "${service}" = "gateway" ]; then
-    default_config=bin/gate.json
+    default_config=server/bin/gate.json
   fi
 
-  binary=${!binary_var:-bin/abe_${service}}
+  binary=${!binary_var:-server/bin/abe_${service}}
   config=${default_config}
-  run_dir=${RUN_DIR:-bin/run}
-  out_dir=${OUT_DIR:-bin/logs}
+  run_dir=${RUN_DIR:-server/bin/run}
+  out_dir=${OUT_DIR:-server/bin/logs}
   pid_file=${!pid_file_var:-${run_dir}/${service}.pid}
   out_file=${!out_file_var:-${out_dir}/${service}/stdout.log}
 

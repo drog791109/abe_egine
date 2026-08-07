@@ -1,0 +1,770 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "id": "broken_blade",
+      "category": "weapon",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "sword",
+        "physical"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 4
+        }
+      ],
+      "source_location": "underground_vein"
+    },
+    {
+      "id": "wooden_sword",
+      "category": "weapon",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "sword",
+        "spirit"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 3
+        },
+        {
+          "type": "spirit_damage",
+          "value": 2
+        }
+      ],
+      "source_location": "taixuan_sect"
+    },
+    {
+      "id": "iron_sword",
+      "category": "weapon",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "sword",
+        "physical",
+        "heavy"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 8
+        },
+        {
+          "type": "speed",
+          "value": -1
+        }
+      ],
+      "source_location": "huanggu_city"
+    },
+    {
+      "id": "star_sand_dagger",
+      "category": "weapon",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "blade",
+        "star_core",
+        "swift"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 5
+        },
+        {
+          "type": "first_strike",
+          "value": 2
+        }
+      ],
+      "source_location": "luoxing_valley"
+    },
+    {
+      "id": "armor_piercing_awl",
+      "category": "weapon",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "physical",
+        "armor_break"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 3
+        },
+        {
+          "type": "apply_armor_break",
+          "value": 1
+        }
+      ],
+      "source_location": "underground_vein"
+    },
+    {
+      "id": "taixuan_token_blade",
+      "category": "weapon",
+      "rarity": "rare",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "sword",
+        "taixuan",
+        "identity"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 10
+        },
+        {
+          "type": "rule_power",
+          "value": 1
+        }
+      ],
+      "source_location": "taixuan_sect"
+    },
+    {
+      "id": "wind_thunder_spear",
+      "category": "weapon",
+      "rarity": "rare",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "spear",
+        "thunder",
+        "chain"
+      ],
+      "base_effects": [
+        {
+          "type": "attack",
+          "value": 9
+        },
+        {
+          "type": "chain_damage",
+          "value": 3
+        }
+      ],
+      "source_location": "huanggu_city"
+    },
+    {
+      "id": "spirit_gathering_talisman",
+      "category": "talisman",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "spirit",
+        "resource"
+      ],
+      "base_effects": [
+        {
+          "type": "spirit_gain",
+          "value": 2
+        }
+      ],
+      "source_location": "taixuan_sect"
+    },
+    {
+      "id": "thunder_talisman",
+      "category": "talisman",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "thunder",
+        "chain"
+      ],
+      "base_effects": [
+        {
+          "type": "thunder_damage",
+          "value": 6
+        }
+      ],
+      "source_location": "huanggu_city"
+    },
+    {
+      "id": "guard_talisman",
+      "category": "talisman",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "guard",
+        "shield"
+      ],
+      "base_effects": [
+        {
+          "type": "shield",
+          "value": 5
+        }
+      ],
+      "source_location": "underground_vein"
+    },
+    {
+      "id": "chain_talisman",
+      "category": "talisman",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "chain",
+        "modifier"
+      ],
+      "base_effects": [
+        {
+          "type": "trigger_count",
+          "value": 1
+        }
+      ],
+      "source_location": "huanggu_city"
+    },
+    {
+      "id": "marking_talisman",
+      "category": "talisman",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "mark",
+        "explore"
+      ],
+      "base_effects": [
+        {
+          "type": "loot_mark",
+          "value": 1
+        }
+      ],
+      "source_location": "huanggu_city"
+    },
+    {
+      "id": "seal_talisman",
+      "category": "talisman",
+      "rarity": "rare",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "control",
+        "seal"
+      ],
+      "base_effects": [
+        {
+          "type": "stun",
+          "value": 1
+        }
+      ],
+      "source_location": "luoxing_valley"
+    },
+    {
+      "id": "spring_return_pill",
+      "category": "pill",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "healing",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "heal",
+          "value": 8
+        }
+      ],
+      "source_location": "underground_vein"
+    },
+    {
+      "id": "qi_condensing_pill",
+      "category": "pill",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "spirit",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "spirit_gain",
+          "value": 4
+        }
+      ],
+      "source_location": "taixuan_sect"
+    },
+    {
+      "id": "barrier_break_powder",
+      "category": "pill",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "armor_break",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "armor_break_power",
+          "value": 2
+        }
+      ],
+      "source_location": "huanggu_city"
+    },
+    {
+      "id": "jade_dew_pill",
+      "category": "pill",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "healing",
+        "duration",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "heal_over_time",
+          "value": 3,
+          "duration": 3
+        }
+      ],
+      "source_location": "luoxing_valley"
+    },
+    {
+      "id": "blood_warming_pill",
+      "category": "pill",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "low_health",
+        "consumable"
+      ],
+      "base_effects": [
+        {
+          "type": "attack_when_low_health",
+          "value": 4
+        }
+      ],
+      "source_location": "huanggu_city"
+    },
+    {
+      "id": "star_core_shard",
+      "category": "material",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "star_core",
+        "transform"
+      ],
+      "base_effects": [],
+      "source_location": "luoxing_valley"
+    },
+    {
+      "id": "vein_stone",
+      "category": "material",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "vein",
+        "spirit"
+      ],
+      "base_effects": [
+        {
+          "type": "spirit_capacity",
+          "value": 1
+        }
+      ],
+      "source_location": "underground_vein"
+    },
+    {
+      "id": "broken_array_pattern",
+      "category": "material",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "array",
+        "link"
+      ],
+      "base_effects": [],
+      "source_location": "taixuan_sect"
+    },
+    {
+      "id": "black_scale",
+      "category": "material",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "beast",
+        "guard"
+      ],
+      "base_effects": [
+        {
+          "type": "defense",
+          "value": 1
+        }
+      ],
+      "source_location": "underground_vein"
+    },
+    {
+      "id": "worn_identity_plate",
+      "category": "material",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "identity",
+        "clue"
+      ],
+      "base_effects": [],
+      "source_location": "huanggu_city"
+    },
+    {
+      "id": "greenwood_heart_splinter",
+      "category": "material",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "wood",
+        "healing"
+      ],
+      "base_effects": [
+        {
+          "type": "healing_power",
+          "value": 1
+        }
+      ],
+      "source_location": "luoxing_valley"
+    },
+    {
+      "id": "ash_silk",
+      "category": "material",
+      "rarity": "rare",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "pollution",
+        "cost"
+      ],
+      "base_effects": [
+        {
+          "type": "rule_power",
+          "value": 2
+        }
+      ],
+      "source_location": "luoxing_valley"
+    },
+    {
+      "id": "basic_array_eye",
+      "category": "array",
+      "rarity": "common",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "rotatable": false,
+      "tags": [
+        "array",
+        "link"
+      ],
+      "base_effects": [
+        {
+          "type": "adjacent_rule_power",
+          "value": 1
+        }
+      ],
+      "source_location": "taixuan_sect"
+    },
+    {
+      "id": "guiding_array_plate",
+      "category": "array",
+      "rarity": "uncommon",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "array",
+        "spirit",
+        "link"
+      ],
+      "base_effects": [
+        {
+          "type": "linked_spirit_gain",
+          "value": 1
+        }
+      ],
+      "source_location": "underground_vein"
+    },
+    {
+      "id": "echo_array_plate",
+      "category": "array",
+      "rarity": "rare",
+      "shape": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "rotatable": true,
+      "tags": [
+        "array",
+        "echo",
+        "modifier"
+      ],
+      "base_effects": [
+        {
+          "type": "repeat_linked_trigger",
+          "value": 1
+        }
+      ],
+      "source_location": "luoxing_valley"
+    }
+  ]
+}

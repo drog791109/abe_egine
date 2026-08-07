@@ -38,7 +38,7 @@ const char* SettlementServer::name() const
 
 const char* SettlementServer::config_path() const
 {
-    return "bin/settlement.json";
+    return "server/bin/settlement.json";
 }
 
 void SettlementServer::defaults()

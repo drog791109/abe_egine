@@ -37,7 +37,7 @@ static int test_match_server_defaults_and_config(void)
     TEST_REQUIRE(server.name() != NULL);
     TEST_REQUIRE(strcmp(server.name(), "match") == 0);
     TEST_REQUIRE(server.config_path() != NULL);
-    TEST_REQUIRE(strcmp(server.config_path(), "bin/match.json") == 0);
+    TEST_REQUIRE(strcmp(server.config_path(), "server/bin/match.json") == 0);
     TEST_REQUIRE(server.initialized() == 0);
     return ABE_TEST_STATUS_OK;
 }

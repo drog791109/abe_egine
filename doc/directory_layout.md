@@ -87,9 +87,11 @@ share/proto ------------------------------------> common/services
 server/
   engine/       基础设施和共享能力
   services/     进程入口和依赖装配
+  bin/          服务二进制、启动配置、PID 和日志运行目录
+  data/         从共享 Excel 按服务端字段归属生成的静态 JSON
 ```
 
-客户端与服务端共享的协议位于根级 `share/proto/`，不属于服务端源码目录。
+客户端与服务端共享的协议和 Excel 数据源位于根级 `share/`，不属于服务端源码目录。`server/bin/` 是服务运行目录，`server/data/` 是生成数据目录，都不承载 engine 公共接口实现。
 
 ### 6.1 `server/engine`
 
@@ -195,7 +197,7 @@ adapter 公共接口不得暴露 STL 容器、`std::function`、智能指针或�
 | `share/proto/client/` | 客户端和服务端之间的协议 IDL，例如登录、房间输入、广播。 | C++ 生成代码、服务间私有协议。 | 按功能拆 `login.proto`、`game.proto`、`protocol.proto`。 |
 | `share/proto/store/` | 持久化数据结构 IDL，例如账号、用户、背包、任务、邮件。 | MySQL 建表语句、查询投影策略、客户端可见错误码。 | 固定列只放 SQL，完整状态以 `PB_*_DATA` blob 落库。 |
 | `share/proto/internal/` | 服务间 RPC、控制面、事件流 IDL。 | 客户端可见协议和业务实现。 | 后续补 `session.proto`、`coordinator.proto`、`settlement.proto` 等。 |
-| `share/tables/` | 策划可编辑的 Excel 源表。 | 运行时 JSON、临时导出文件、服务实现。 | 使用客户端数据工具生成到 `client/data/`。 |
+| `share/tables/` | 策划可编辑的 Excel 源表。 | 运行时 JSON、临时导出文件、服务实现。 | 按字段归属生成到 `client/data/` 和 `server/data/`。 |
 
 生成代码应放入构建输出目录或明确的 generated 目录，不直接手改生成文件。
 当前客户端 proto 通过 `share/proto/client` 下的 `abe_proto_client` target 生成 C++ 代码；上层逻辑错误码以 `protocol.proto` 的 `ErrorCode` 为唯一来源。

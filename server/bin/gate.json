@@ -9,7 +9,7 @@
   "log": {
     "output": "daily",
     "level": "info",
-    "dir": "bin/logs/gateway",
+    "dir": "server/bin/logs/gateway",
     "utc_offset_minutes": 480
   },
   "mysql": {

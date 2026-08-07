@@ -40,7 +40,7 @@ const char* MatchServer::name() const
 
 const char* MatchServer::config_path() const
 {
-    return "bin/match.json";
+    return "server/bin/match.json";
 }
 
 void MatchServer::defaults()
